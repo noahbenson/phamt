@@ -7,6 +7,9 @@
 """Persistent Hash Array Mapped Trie data structure for Python.
 """
 
-from .core import (phamt_from_kvs, phamt_from_vec)
+from .core import PHAMT
+
+__version__ = "0.0.1"
+
 
 

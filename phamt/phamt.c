@@ -6,6 +6,7 @@
 // (This is used by the phamt.h header file.)
 #define __phamt_phamt_c_290301a044d09f4211d799b982b25688
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <Python.h>
 #include "phamt.h"
@@ -700,8 +701,10 @@ static PyObject *phamt_tp_iter(PHAMT_t self)
 }
 static void phamt_tp_dealloc(PyObject* self)
 {
-   PyTypeObject* tp = Py_TYPE(self);
-   bits_t ii, ncells = phamt_cellcount((PHAMT_t)self);
+   PyTypeObject* tp;
+   bits_t ii, ncells;
+   tp = Py_TYPE(self);
+   ncells = phamt_cellcount((PHAMT_t)self);
    PyObject_GC_UnTrack(self);
    // Walk through the children, dereferencing them
    for (ii = 0; ii < ncells; ++ii)
@@ -715,7 +718,8 @@ static PyObject* phamt_tp_richcompare(PyObject* self, PyObject *other, int op)
 static int phamt_tp_traverse(PHAMT_t self, visitproc visit, void *arg)
 {
    hash_t ii, ncells;
-   PyTypeObject* tp = Py_TYPE(self);
+   PyTypeObject* tp;
+   tp = Py_TYPE(self);
    Py_VISIT(tp);
    ncells = phamt_cellcount(self);
    for (ii = 0; ii < ncells; ++ii) {
@@ -760,7 +764,12 @@ static PyMethodDef PHAMT_methods[] = {
    // For JSON/pickle serialization.
    {"__reduce__", (PyCFunction)phamt_py_reduce, METH_NOARGS, NULL},
    {"__dump__", (PyCFunction)phamt_py_dump, METH_NOARGS, NULL},
-   {NULL, NULL}
+   {"from_kvs", (PyCFunction)phamt_from_kvs, METH_FASTCALL,
+    "Constructs a PHAMT object from an iterable of key-value pairs."},
+   {"from_seq", (PyCFunction)phamt_from_seq, METH_FASTCALL,
+    ("Constructs a PHAMT object from a sequence of values, which are assigned the "
+     "keys 0, 1, 2, etc.")},
+   {NULL, NULL, 0, NULL}
 };
 static PySequenceMethods PHAMT_as_sequence = {
    0,                             // sq_length
@@ -780,9 +789,9 @@ static PyMappingMethods PHAMT_as_mapping = {
    NULL
 };
 static PyTypeObject PHAMT_type = {
-   PyVarObject_HEAD_INIT(NULL, 0)
+   PyVarObject_HEAD_INIT(&PyType_Type, 0)
    "phamt.core.PHAMT",
-   .tp_doc = PHAMT_DOCSTRING,
+   .tp_doc = PyDoc_STR(PHAMT_DOCSTRING),
    .tp_basicsize = PHAMT_SIZE,
    .tp_itemsize = sizeof(void*),
    .tp_methods = PHAMT_methods,
@@ -802,19 +811,12 @@ static PyTypeObject PHAMT_type = {
    .tp_repr = (reprfunc)phamt_py_repr,
    .tp_str = (reprfunc)phamt_py_repr,
 };
-static PyMethodDef phamt_methods[] = {
-   {"phamt_from_kvs", (PyCFunction)phamt_from_kvs, METH_FASTCALL,
-    "Constructs a phamt object from an iterable of key-value pairs."},
-   {"phamt_from_seq", (PyCFunction)phamt_from_seq, METH_FASTCALL,
-    "Constructs a phamt object from an iterable of elements."},
-   {NULL, NULL, 0, NULL}
-};
 static struct PyModuleDef phamt_pymodule = {
    PyModuleDef_HEAD_INIT,
    "core",
    NULL,
    -1,
-   phamt_methods,
+   NULL,
    NULL,
    NULL,
    NULL,
@@ -823,13 +825,26 @@ static struct PyModuleDef phamt_pymodule = {
 PyMODINIT_FUNC PyInit_core(void)
 {
    PyObject* m = PyModule_Create(&phamt_pymodule);
-   if (m == NULL)
-      return NULL;
+   if (m == NULL) return NULL;
+   // Initialize the PHAMT_type a tp_dict.
+   if (PyType_Ready(&PHAMT_type) < 0) return NULL;
+   Py_INCREF(&PHAMT_type);
+   // Get the Empty PHAMT ready.
+   PHAMT_EMPTY = (PHAMT_t)PyObject_GC_NewVar(struct PHAMT, &PHAMT_type, 0);
+   if (!PHAMT_EMPTY) return NULL;
    PHAMT_EMPTY = phamt_new(0);
    PHAMT_EMPTY->address = 0;
    PHAMT_EMPTY->numel = 0;
    PHAMT_EMPTY->bits = 0;
    PyObject_GC_Track(PHAMT_EMPTY);
+   // Add empty to the type's dictionary.
+   PyDict_SetItemString(PHAMT_type.tp_dict, "empty", (PyObject*)PHAMT_EMPTY);
+   // The PHAMT type.
+   if (PyModule_AddObject(m, "PHAMT", (PyObject*)&PHAMT_type) < 0) {
+      Py_DECREF(&PHAMT_type);
+      return NULL;
+   }
+   // Return the module!
    return m;
 }
 
