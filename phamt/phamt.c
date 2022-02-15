@@ -448,7 +448,7 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
    shift = depth_to_shift(depth);
    // Is the key beneath this node or not?
    h = phamt_cellindex(node->address, node->bits, k, &ci);
-   if (h) {
+   if (phamt_isbeneath(node->address, k)) {
       // The key is beneath this node, so we will dig down until we find the
       // correct place for this key.
       bits_t flag = (BITS_ONE << ci.bitindex);
@@ -477,7 +477,7 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
          }
       } else {
          // We are not a twig.
-         if (node->bits & flag) {
+         if (h) {
             // We pass control on down and return a copy of ourselves on the way
             // back up.
             PyObject* oldcell = (PyObject*)node->cells[ci.cellindex];
