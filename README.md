@@ -1,12 +1,38 @@
 # phamt
 
-An optimized C implementation of a Persistent Hash Array Mapped Trie (PHAMT).
+An optimized C implementation of a Persistent Hash Array Mapped Trie (PHAMT)
+data structure for Python.
 
 This repository contains a C implementation for a PHAMT type. The type maps
 integer keys to arbitrary values efficiently, and does so with
 immutable/persistent data structures. It is intended for use in building more
 user-friendly persistent types such as persistent dictionaries and persistent
 lists.
+
+## Example Usage
+
+```python
+>>> from phamt import PHAMT
+
+# Start with the empty PHAMT.
+>>> nothing = PHAMT.empty
+
+# Add some key-value pairs to it.
+>>> items = nothing.assoc(42, "item 1").assoc(-3, "item 2")
+
+# Lookup the items.
+>>> items[42]
+"item 1"
+
+>>> items[-3]
+"item 2"
+
+# Remove items.
+>>> item = items.dissoc(42)
+
+>>> item.get(42, "not found")
+"not found"
+```
 
 ## License
 
