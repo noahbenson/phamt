@@ -144,19 +144,19 @@ inline uint16_t clz16(uint16_t w)
 }
 inline uint64_t clz64(uint64_t w)
 {
-   uint32_t c = clz32((uint32_t)(w >> 32));
-   return (c == 32 ? 32 + clz32((uint32_t)w) : c);
+   uint32_t c = clz32((uint32_t)w);
+   return (c == 32 ? 32 + clz32((uint32_t)(w >> 32)) : c);
 }
 #ifdef uint128_t
 inline uint64_t clz128(uint128_t w)
 {
-   uint32_t c = clz32((uint32_t)(w >> 96));
+   uint32_t c = clz32((uint32_t)w);
    if (c < 32) return c;
-   c = clz32((uint32_t)(w >> 64));
-   if (c < 32) return c + 32;
    c = clz32((uint32_t)(w >> 32));
+   if (c < 32) return c + 32;
+   c = clz32((uint32_t)(w >> 64));
    if (c < 32) return c + 64;
-   return clz32((uint32_t)w) + 96;
+   return clz32((uint32_t)(w >> 96)) + 96;
 }
 #endif
 // ctz(bits)
@@ -175,19 +175,19 @@ inline uint16_t ctz16(uint16_t w)
 }
 inline uint64_t ctz64(uint64_t w)
 {
-   uint32_t c = ctz32((uint32_t)w);
-   return (c == 32 ? 32 + ctz32((uint32_t)(w >> 32)) : c);
+   uint32_t c = ctz32((uint32_t)(w >> 32));
+   return (c == 32 ? 32 + ctz32((uint32_t)w) : c);
 }
 #ifdef uint128_t
 inline uint128_t ctz128(uint128_t w)
 {
-   uint32_t c = ctz32((uint32_t)w);
+   uint32_t c = ctz32((uint32_t)(w >> 96));
    if (c < 32) return c;
-   c = ctz32((uint32_t)(w >> 32));
-   if (c < 32) return c + 32;
    c = ctz32((uint32_t)(w >> 64));
+   if (c < 32) return c + 32;
+   c = ctz32((uint32_t)(w >> 32));
    if (c < 32) return c + 64;
-   return ctz32((uint32_t)(w >> 96)) + 96;
+   return ctz32((uint32_t)w) + 96;
 }
 #endif
 // lowmask(bitno)
@@ -314,15 +314,15 @@ inline hash_t phamt_isbeneath(hash_t nodeid, hash_t leafid)
    hash_t mask = phamt_nodemask(nodeid);
    return leafid <= (nodeid | mask) && leafid >= (nodeid & ~mask);
 }
-// phamt_highbitdiff(id1, id2)
+// phamt_lowbitdiff(id1, id2)
 // Yields the highest bit that is different between id1 and id2.
-inline bits_t phamt_highbitdiff_bits(bits_t id1, bits_t id2)
+inline bits_t phamt_lowbitdiff_bits(bits_t id1, bits_t id2)
 {
-   return HASH_BITCOUNT - clz_bits(id1 ^ id2) - 1;
+   return clz_bits(id1 ^ id2);
 }
-inline hash_t phamt_highbitdiff_hash(hash_t id1, hash_t id2)
+inline hash_t phamt_lowbitdiff_hash(hash_t id1, hash_t id2)
 {
-   return HASH_BITCOUNT - clz_hash(id1 ^ id2) - 1;
+   return clz_hash(id1 ^ id2);
 }
 
 //------------------------------------------------------------------------------
@@ -387,7 +387,7 @@ inline hash_t phamt_cellindex(hash_t id, bits_t bits, hash_t leafid,
       return 0;
    } else {
       // Get the cellindex.
-      ci->cellindex = BITS_ONE + popcount_bits(bits & lowmask_bits(shift));
+      ci->cellindex = popcount_bits(bits & lowmask_bits(ci->bitindex));
       // The return value just depends on whether the bit is set.
       return bits & (BITS_ONE << ci->bitindex);
    }
@@ -439,19 +439,19 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
 {
    struct cellindex_data ci;
    PHAMT_t kv, u;
-   hash_t h, bit0, shift, newdepth;
+   hash_t h, bit0, shift, depth, newdepth;
    // If the node is empty, we just return a new node. This auto-updates the
    // refcount for v.
    if (node->numel == 0) return phamt_from_kv(k, v);
+   depth = phamt_depth(node->address);
+   bit0 = depth_to_startbit(depth);
+   shift = depth_to_shift(depth);
    // Is the key beneath this node or not?
    h = phamt_cellindex(node->address, node->bits, k, &ci);
    if (h) {
       // The key is beneath this node, so we will dig down until we find the
       // correct place for this key.
       bits_t flag = (BITS_ONE << ci.bitindex);
-      hash_t depth = phamt_depth(node->address);
-      bit0 = depth_to_startbit(depth);
-      shift = depth_to_shift(depth);
       // Grab the index out of the key.
       // Okay, is the node a twig or not?
       if (depth == PHAMT_TWIG_DEPTH) {
@@ -512,8 +512,9 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
       // that links to both the key and node.
       // The key and value will go in their own node, regardless.
       kv = phamt_from_kv(k, v);
-      // What's the highest it at which 
-      h = phamt_highbitdiff_hash(node->address, k);
+      // What's the highest bit at which they differ?
+      h = highmask_hash(bit0 + shift);
+      h = phamt_lowbitdiff_hash(node->address & h, k & h);
       if (h <= HASH_BITCOUNT - PHAMT_ROOT_SHIFT) {
          // We're allocating a new non-root node.
          bit0 = (h - PHAMT_TWIG_SHIFT) / PHAMT_NODE_SHIFT;
@@ -614,14 +615,14 @@ static PyObject* phamt_py_assoc(PyObject* self, PyObject* varargs)
 {
    hash_t key;
    PyObject *val;
-   if (!PyArg_UnpackTuple(varargs, "nO:PHAMT.assoc", 2, 2, &key, &val))
+   if (!PyArg_ParseTuple(varargs, "nO:assoc", &key, &val))
       return NULL;
    return (PyObject*)phamt_assoc((PHAMT_t)self, key, val);
 }
 static PyObject* phamt_py_dissoc(PyObject* self, PyObject* varargs)
 {
    hash_t key;
-   if (!PyArg_UnpackTuple(varargs, "n:PHAMT.dissoc", 1, 1, &key))
+   if (!PyArg_ParseTuple(varargs, "n:dissoc", &key))
       return NULL;
    return (PyObject*)phamt_dissoc((PHAMT_t)self, key);
 }
@@ -629,7 +630,7 @@ static PyObject* phamt_py_get(PyObject* self, PyObject* varargs)
 {
    hash_t key;
    PyObject* res, *dv = NULL;
-   if (!PyArg_UnpackTuple(varargs, "nO:PHAMT.dissoc", 1, 2, &key, &dv))
+   if (!PyArg_ParseTuple(varargs, "nO:get", &key, &dv))
       return NULL;
    res = (PyObject*)phamt_lookup((PHAMT_t)self, key);
    if (res) {
@@ -741,9 +742,36 @@ static PyObject* phamt_py_hash(PyObject* self)
 {
    return NULL; // #TODO
 }
+static void phamt_format(PHAMT_t node, char* buf)
+{
+   bits_t ci, bi, ncells, bits;
+   hash_t depth;
+   depth = phamt_depth(node->address);
+   ncells = phamt_cellcount(node);
+   bits = node->bits;
+   for (ci = 0; ci < ncells; ++ci) {
+      bi = ctz_bits(bits);
+      bits &= ~(BITS_ONE << bi);
+      if (depth == PHAMT_TWIG_DEPTH) {
+         sprintf(buf, "%s%s%u:%p",
+                 buf, (*buf ? ", " : "<|"),
+                 (unsigned)bi, node->cells[ci]);
+      } else {
+         sprintf(buf, "%s%s%u:",
+                 buf, (*buf ? ", " : "<|"),
+                 (unsigned)bi);
+         phamt_format(node->cells[ci], buf + strlen(buf));
+      }
+   }
+   if (ncells == 0) sprintf(buf, "<|");
+   sprintf(buf, "%s|>", buf);
+}
 static PyObject* phamt_py_repr(PHAMT_t self)
 {
-   return PyUnicode_FromFormat("<PHAMT: n=%zu>", self->numel);
+   static char buf[1024*16];
+   *buf = 0;
+   phamt_format(self, buf);
+   return PyUnicode_FromFormat("%s", buf);
 }
 static void phamt_module_free(void* mod)
 {
