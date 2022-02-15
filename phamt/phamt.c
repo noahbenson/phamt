@@ -742,6 +742,9 @@ static PyObject* phamt_py_hash(PyObject* self)
 {
    return NULL; // #TODO
 }
+#if 0
+// This function is for debugging purposes only!
+// There is a potential buffer overflow error.
 static void phamt_format(PHAMT_t node, char* buf)
 {
    bits_t ci, bi, ncells, bits;
@@ -773,6 +776,12 @@ static PyObject* phamt_py_repr(PHAMT_t self)
    phamt_format(self, buf);
    return PyUnicode_FromFormat("%s", buf);
 }
+#else
+static PyObject* phamt_py_repr(PHAMT_t self)
+{
+   return PyUnicode_FromFormat("<PHAMT:n=%u>", (unsigned)self->numel);
+}
+#endif
 static void phamt_module_free(void* mod)
 {
    PHAMT_t tmp = PHAMT_EMPTY;
@@ -964,7 +973,7 @@ PHAMT_t phamt_copy_delcell(PHAMT_t node, struct cellindex_data ci)
    bits_t ii, ncells;
    ncells = phamt_cellcount(node);
    u = phamt_new(ncells - 1);
-   memcpy(u, node, PHAMT_SIZE + sizeof(void*)*(ci.cellindex - 1));
+   memcpy(u, node, PHAMT_SIZE + sizeof(void*)*ci.cellindex);
    memcpy(u->cells + ci.cellindex,
           node->cells + ci.cellindex + 1,
           sizeof(void*)*(ncells - ci.cellindex));
