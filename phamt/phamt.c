@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <stddef.h>
 #include <Python.h>
 #include "phamt.h"
 
@@ -374,8 +375,8 @@ typedef struct cellindex_data {
 // We're going to define these constructors later when we have defined the type.
 PHAMT_t phamt_new(unsigned ncells);
 PHAMT_t phamt_from_kv(hash_t k, PyObject* v);
-PHAMT_t phamt_copy(PHAMT_t node);
-PHAMT_t phamt_copy_addcell(PHAMT_t node, cellindex_t ci);
+PHAMT_t phamt_copy_chgcell(PHAMT_t node, cellindex_t ci, void* val);
+PHAMT_t phamt_copy_addcell(PHAMT_t node, cellindex_t ci, void* val);
 PHAMT_t phamt_copy_delcell(PHAMT_t node, cellindex_t ci);
 // Additional constructors that are part of the Python interface.
 PyObject* phamt_from_list(PyObject* self, PyObject *const *args, Py_ssize_t nargs);
@@ -479,29 +480,24 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
             Py_INCREF(node);
             return node;
          }
-         u = phamt_copy(node);
-         u->cells[ci.cellindex] = (void*)v;
-         Py_INCREF(v);
-         Py_DECREF(obj);
+         u = phamt_copy_chgcell(node, ci, (void*)v);
       } else {
          // We pass control on down and return a copy of ourselves on the way
          // back up.
-         PyObject* oldcell = (PyObject*)node->cells[ci.cellindex];
-         PHAMT_t newcell = (PHAMT_t)phamt_assoc((PHAMT_t)oldcell, k, v);
-         if ((PHAMT_t)oldcell == newcell) {
+         PHAMT_t oldcell = node->cells[ci.cellindex];
+         PHAMT_t newcell = phamt_assoc(oldcell, k, v);
+         if (oldcell == newcell) {
             Py_DECREF(newcell);
             Py_INCREF(node);
             return node;
          }
          // We make a copy, which increments the refcounts, but we'll have to
          // deref the oldcell due to this.
-         u = phamt_copy(node);
-         u->numel += newcell->numel - ((PHAMT_t)oldcell)->numel;
-         u->cells[ci.cellindex] = newcell;
-         // We no longer hold this reference.
-         Py_DECREF(oldcell);
-         // The new cell u now inherits the reference to newcell; the caller
-         // inherits the reference for u.
+         u = phamt_copy_chgcell(node, ci, (void*)newcell);
+         u->numel += newcell->numel - oldcell->numel;
+         // We aren't returning newcell, so we no longer hold this reference.
+         Py_DECREF(newcell);
+         // The caller now inherits the reference for u.
       }
    } else if (ci.cellindex < 0xff) {
       // The key is beneath this node, so we will dig down until we find the
@@ -510,20 +506,16 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
       if (depth == PHAMT_TWIG_DEPTH) {
          // We're adding a new leaf. This updates refcounts for everything
          // except the replaced cell.
-         u = phamt_copy_addcell(node, ci);
-         u->cells[ci.cellindex] = (void*)v;
+         u = phamt_copy_addcell(node, ci, (void*)v);
          u->numel = node->numel + 1;
-         Py_INCREF(v);
       } else {
          // We are not a twig.
          // We are adding a twig node containing just the leaf below us. This
          // copy function auto-updates the refcounts for all children.
-         u = phamt_copy_addcell(node, ci);
          kv = phamt_from_kv(k, v);
+         u = phamt_copy_addcell(node, ci, (void*)kv);
          ++(u->numel);
-         u->cells[ci.cellindex] = (void*)kv;
-         // u now inherits the ref for kv, and the caller inherits the ref
-         // for u. So we can just return the new object.
+         Py_DECREF((PyObject*)kv);
       }
    } else {
       // The key isn't beneath this node, so we need to make a higher up node
@@ -613,14 +605,13 @@ PHAMT_t phamt_dissoc(PHAMT_t node, hash_t k)
       } else {
          // we're replacing the subnode. This duplicates the refcounts for
          // all items, including the oldcell, so we decref that one.
-         u = phamt_copy(node);
+         u = phamt_copy_chgcell(node, ci, newcell);
          u->numel += newcell->numel - ((PHAMT_t)oldcell)->numel;
-         u->cells[ci.cellindex] = newcell;
-         Py_DECREF(oldcell);
+         Py_DECREF(newcell);
       }
    }
    // We need to register the new node u with the garbage collector.
-   PyObject_GC_Track((PyObject*)u);   
+   PyObject_GC_Track((PyObject*)u);
    return (PHAMT_t)u;
 }
 
@@ -631,26 +622,42 @@ PHAMT_t phamt_dissoc(PHAMT_t node, hash_t k)
 // Many of the functions below are just wrappers around the functions above.
 static PyObject* phamt_py_assoc(PyObject* self, PyObject* varargs)
 {
-   hash_t key;
-   PyObject *val;
-   if (!PyArg_ParseTuple(varargs, "nO:assoc", &key, &val))
+   hash_t h;
+   PyObject* key, *val;
+   if (!PyArg_ParseTuple(varargs, "OO:assoc", &key, &val))
       return NULL;
-   return (PyObject*)phamt_assoc((PHAMT_t)self, key, val);
+   if (!PyLong_Check(key)) {
+      PyErr_SetString(PyExc_TypeError, "PHAMT keys must be integers");
+      return NULL;
+   }
+   h = (hash_t)PyLong_AsSsize_t(key);
+   return (PyObject*)phamt_assoc((PHAMT_t)self, h, val);
 }
 static PyObject* phamt_py_dissoc(PyObject* self, PyObject* varargs)
 {
-   hash_t key;
-   if (!PyArg_ParseTuple(varargs, "n:dissoc", &key))
+   hash_t h;
+   PyObject* key;
+   if (!PyArg_ParseTuple(varargs, "O:dissoc", &key))
       return NULL;
-   return (PyObject*)phamt_dissoc((PHAMT_t)self, key);
+   if (!PyLong_Check(key)) {
+      PyErr_SetString(PyExc_TypeError, "PHAMT keys must be integers");
+      return NULL;
+   }
+   h = (hash_t)PyLong_AsSsize_t(key);
+   return (PyObject*)phamt_dissoc((PHAMT_t)self, h);
 }
 static PyObject* phamt_py_get(PyObject* self, PyObject* varargs)
 {
-   hash_t key;
-   PyObject* res, *dv = NULL;
-   if (!PyArg_ParseTuple(varargs, "nO:get", &key, &dv))
+   hash_t h;
+   PyObject* key, *res, *dv = NULL;
+   if (!PyArg_ParseTuple(varargs, "OO:get", &key, &dv))
       return NULL;
-   res = (PyObject*)phamt_lookup((PHAMT_t)self, key);
+   if (!PyLong_Check(key)) {
+      PyErr_SetString(PyExc_TypeError, "PHAMT keys must be integers");
+      return NULL;
+   }
+   h = (hash_t)PyLong_AsSsize_t(key);
+   res = (PyObject*)phamt_lookup((PHAMT_t)self, h);
    if (res) {
       Py_INCREF(res);
       return res;
@@ -721,13 +728,17 @@ static PyObject *phamt_tp_iter(PHAMT_t self)
 static void phamt_tp_dealloc(PyObject* self)
 {
    PyTypeObject* tp;
+   PyObject* tmp;
    bits_t ii, ncells;
    tp = Py_TYPE(self);
    ncells = phamt_cellcount((PHAMT_t)self);
    PyObject_GC_UnTrack(self);
    // Walk through the children, dereferencing them
-   for (ii = 0; ii < ncells; ++ii)
-      Py_DECREF(((PHAMT_t)self)->cells[ii]);
+   for (ii = 0; ii < ncells; ++ii) {
+      tmp = ((PHAMT_t)self)->cells[ii];
+      ((PHAMT_t)self)->cells[ii] = NULL;
+      Py_DECREF(tmp);
+   }
    tp->tp_free(self);
 }
 static PyObject* phamt_tp_richcompare(PyObject* self, PyObject *other, int op)
@@ -742,7 +753,8 @@ static int phamt_tp_traverse(PHAMT_t self, visitproc visit, void *arg)
    Py_VISIT(tp);
    ncells = phamt_cellcount(self);
    for (ii = 0; ii < ncells; ++ii) {
-      Py_VISIT(((PHAMT_t)self)->cells[ii]);
+      if (self->cells[ii])
+         Py_VISIT(((PHAMT_t)self)->cells[ii]);
    }
    return 0;
 }
@@ -938,20 +950,26 @@ PHAMT_t phamt_from_kv(hash_t k, PyObject* v)
    node->cells[0] = (void*)v;
    // Update that refcount and notify the GC tracker!
    Py_INCREF(v);
-   PyObject_GC_Track(node);
+   PyObject_GC_Track((PyObject*)node);
    // Otherwise, that's all!
    return node;
 }
-// phamt_copy(node)
-// Creates an exact copy of the given node, and increases all the relevant
-// reference counts for the node's cells.
-PHAMT_t phamt_copy(PHAMT_t node)
+// phamt_copy_chgcell(node)
+// Creates an exact copy of the given node with a single element replaced,
+// and increases all the relevant reference counts for the node's cells,
+// including val.
+PHAMT_t phamt_copy_chgcell(PHAMT_t node, struct cellindex_data ci, void* val)
 {
    PHAMT_t u;
    bits_t ii, ncells;
    ncells = phamt_cellcount(node);
    u = phamt_new(ncells);
-   memcpy(u, node, PHAMT_SIZE + sizeof(void*)*ncells);
+   u->address = node->address;
+   u->bits = node->bits;
+   u->numel = node->numel;
+   memcpy(u->cells, node->cells, sizeof(void*)*ncells);
+   // Change the relevant cell.
+   u->cells[ci.cellindex] = val;
    // Increase the refcount for all these cells!
    for (ii = 0; ii < ncells; ++ii)
       Py_INCREF((PyObject*)u->cells[ii]);
@@ -962,21 +980,25 @@ PHAMT_t phamt_copy(PHAMT_t node)
 // position and the bits value updated; increases all the relevant
 // reference counts for the node's cells. Does not update numel or initiate the
 // new cell bucket itself.
-PHAMT_t phamt_copy_addcell(PHAMT_t node, struct cellindex_data ci)
+// The refcount on val is incremented.
+PHAMT_t phamt_copy_addcell(PHAMT_t node, struct cellindex_data ci, void* val)
 {
    PHAMT_t u;
    bits_t ii, ncells;
    ncells = phamt_cellcount(node);
    u = phamt_new(ncells + 1);
-   memcpy(u, node, PHAMT_SIZE + sizeof(void*)*ci.cellindex);
+   u->address = node->address;
+   u->bits = node->bits | (BITS_ONE << ci.bitindex);
+   u->numel = node->numel;
+   memcpy(u->cells, node->cells, sizeof(void*)*ci.cellindex);
    memcpy(u->cells + ci.cellindex + 1,
           node->cells + ci.cellindex,
           sizeof(void*)*(ncells - ci.cellindex));
+   u->cells[ci.cellindex] = val;
    // Increase the refcount for all these cells!
+   ++ncells;
    for (ii = 0; ii < ncells; ++ii)
-      Py_INCREF((PyObject*)node->cells[ii]);
-   // Set the bits flag appropriately.
-   u->bits |= (BITS_ONE << ci.bitindex);
+      Py_INCREF((PyObject*)u->cells[ii]);
    return u;
 }
 // phamt_copy_delcell(node, cellinfo)
@@ -988,14 +1010,17 @@ PHAMT_t phamt_copy_delcell(PHAMT_t node, struct cellindex_data ci)
 {
    PHAMT_t u;
    bits_t ii, ncells;
-   ncells = phamt_cellcount(node);
-   u = phamt_new(ncells - 1);
-   memcpy(u, node, PHAMT_SIZE + sizeof(void*)*ci.cellindex);
+   ncells = phamt_cellcount(node) - 1;
+   if (ncells == 0) RETURN_EMPTY;
+   u = phamt_new(ncells);
+   u->address = node->address;
+   u->bits = node->bits & ~(BITS_ONE << ci.bitindex);
+   u->numel = node->numel;
+   memcpy(u->cells, node->cells, sizeof(void*)*ci.cellindex);
    memcpy(u->cells + ci.cellindex,
           node->cells + ci.cellindex + 1,
           sizeof(void*)*(ncells - ci.cellindex));
    // Increase the refcount for all these cells!
-   ncells--;
    for (ii = 0; ii < ncells; ++ii)
       Py_INCREF((PyObject*)u->cells[ii]);
    // Set the bits flag appropriately.
@@ -1007,5 +1032,5 @@ PHAMT_t phamt_copy_delcell(PHAMT_t node, struct cellindex_data ci)
 // Constructors (from an interator or array).
 PyObject* phamt_from_list(PyObject* self, PyObject *const *args, Py_ssize_t nargs)
 {
-   return PyLong_FromLong(nargs * 2);
+   return NULL; // #TODO
 }

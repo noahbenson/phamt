@@ -10,6 +10,46 @@ from ..core import PHAMT
 class TestPHAMT(TestCase):
     """Tests of the `phamt.PHAMT` type."""
 
+    def make_random_pair(self, n=100, minint=None, maxint=None):
+        """Peforms a random set of operations on both a dict and a PHAMT and
+        returns both.
+
+        The dict is made with values that are weakrefs to the same objects that
+        make up the PHAMT values. They should otherwise be equal.
+
+        Also returns a list of (ordered) weakref references to the values that
+        were inserted (some may be garbage collected already, that is fine).
+        """
+        from random import (randint, choice)
+        from weakref import ref
+        if minint is None: minint = -9223372036854775808
+        if maxint is None: maxint = 9223372036854775807
+        d = {}
+        u = PHAMT.empty
+        inserts = []
+        for ii in range(n):
+            # What to do? assoc or dissoc?
+            if len(d) == 0 or randint(0,3):
+                # assoc:
+                v = set([ii])
+                vr = ref(v)
+                k = randint(minint, maxint)
+                u = u.assoc(k, v)
+                d[k] = vr
+                inserts.append(vr)
+            else:
+                # Choose k frmo in d
+                k = choice(list(d))
+                u = u.dissoc(k)
+                del d[k]
+            # At every step, these must be equal.
+            self.assertTrue(len(d) == len(u))
+            for (k,v) in d.items():
+                if k not in u: print(k)
+                self.assertTrue(k in u)
+                self.assertTrue(v() is not None)
+                self.assertTrue(u[k] is v())
+        return (u, d, inserts)
     def test_empty(self):
         """Tests that `PHAMT.empty` has the correct properties.
 
@@ -19,7 +59,6 @@ class TestPHAMT(TestCase):
         self.assertTrue(len(PHAMT.empty) == 0)
         self.assertFalse(any(x in PHAMT.empty for x in range(100)))
         # #TODO: test iteration
-
     def test_assoc(self):
         """Tests that `PHAMT.assoc` works correctly.
 
@@ -68,4 +107,31 @@ class TestPHAMT(TestCase):
         for k in range(n):
             self.assertTrue(k in p)
             self.assertTrue(p[k] == str(k))
+        # A more complicated (random) test that includes dissoc.
+        (u, d, assocs) = self.make_random_pair(1000)
+        self.assertTrue(len(u) == len(d))
+        for (k,v) in d.items():
+            self.assertTrue(k in u)
+            self.assertTrue(u[k] is d[k]())
         # #TODO: test iteration
+    def test_gc(self):
+        """Tests that PHAMT objects are garbage collectable and allow their
+        values to be garbag collected.
+        """
+        import gc
+        from weakref import ref
+        s = set([])
+        sr = ref(s)
+        u1 = PHAMT.empty.assoc(0, s)
+        del s
+        self.assertTrue(sr() is not None)
+        del u1
+        gc.collect()
+        self.assertTrue(sr() is None)
+        # Test using random dict/PHAMT inserts and deletes.
+        (u, d, assocs) = self.make_random_pair(500)
+        # if we delete u, all the assocs should get gc'ed.
+        del u
+        gc.collect()
+        for r in assocs:
+            self.assertTrue(r() is None)
