@@ -649,9 +649,19 @@ static PyObject* phamt_py_dissoc(PyObject* self, PyObject* varargs)
 static PyObject* phamt_py_get(PyObject* self, PyObject* varargs)
 {
    hash_t h;
-   PyObject* key, *res, *dv = NULL;
-   if (!PyArg_ParseTuple(varargs, "OO:get", &key, &dv))
+   PyObject* key, *res, *dv;
+   Py_ssize_t sz = PyTuple_Size(varargs);
+   if (sz == 1) {
+      if (!PyArg_ParseTuple(varargs, "O:get", &key))
+         return NULL;
+      dv = NULL;
+   } else if (sz == 2) {
+      if (!PyArg_ParseTuple(varargs, "OO:get", &key, &dv))
+         return NULL;
+   } else {
+      PyErr_SetString(PyExc_ValueError, "get requires 1 or 2 arguments");
       return NULL;
+   }
    if (!PyLong_Check(key)) {
       PyErr_SetString(PyExc_TypeError, "PHAMT keys must be integers");
       return NULL;
