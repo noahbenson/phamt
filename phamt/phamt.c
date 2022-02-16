@@ -8,16 +8,26 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <Python.h>
 #include "phamt.h"
 
 // Some configuration ----------------------------------------------------------
+
+#define MAX_64BIT 0xffffffffffffffff
+// Possibly, the uint128_t isn't defined, but could be...
+#ifndef uint128_t
+#  if defined ULLONG_MAX && (ULLONG_MAX >> 64 == MAX_64BIT)
+typedef unsigned long long uint128_t;
+#  endif
+#endif
 // Handy constant values.
 const hash_t HASH_ZERO = ((hash_t)0);
 const hash_t HASH_ONE = ((hash_t)1);
 // The bits type is also defined here.
 typedef uint32_t bits_t;
 #define BITS_BITCOUNT 32
+#define BITS_MAX 0xffffffff
 // We use a constant shift of 5 throughout except at the root node (which can't
 // be shifted at 5 due to how the bits line-up.
 #define PHAMT_NODE_SHIFT 5
@@ -99,6 +109,13 @@ const bits_t BITS_ONE     = (bits_t)1;
 
 // popcount(bits)
 // Returns the number of set bits in the given bits_t unsigned integer.
+#if   defined (__builtin_popcount) && (UINT_MAX == BITS_MAX)
+#     define popcount32 __builtin_popcount
+#elif defined (__builtin_popcountl) && (ULONG_MAX == BITS_MAX)
+#     define popcount32 __builtin_popcountl
+#elif defined (ULLONG_MAX) && defined (__builtin_popcountll) && (ULLONG_MAX == BITS_MAX)
+#     define popcount32 __builtin_popcountll
+#else
 inline uint32_t popcount32(uint32_t w)
 {
    w = w - ((w >> 1) & 0x55555555);
@@ -106,14 +123,23 @@ inline uint32_t popcount32(uint32_t w)
    w = (w + (w >> 4)) & 0x0F0F0F0F;
    return (w * 0x01010101) >> 24;
 }
+#endif
 inline uint16_t popcount16(uint16_t w)
 {
    return popcount32((uint32_t)w);
 }
+#if   defined (__builtin_popcount) && (UINT_MAX == MAX_64BIT)
+#     define popcount64 __builtin_popcount
+#elif defined (__builtin_popcountl) && (ULONG_MAX == MAX_64BIT)
+#     define popcount64 __builtin_popcountl
+#elif defined (ULLONG_MAX) && defined (__builtin_popcountll) && (ULLONG_MAX == MAX_64BBIT)
+#     define popcount64 __builtin_popcountll
+#else
 inline uint64_t popcount64(uint64_t w)
 {
    return popcount32((uint32_t)w) + popcount32((uint32_t)(w >> 32));
 }
+#endif
 #ifdef uint128_t
 inline uint64_t popcount128(uint128_t w)
 {
@@ -127,16 +153,12 @@ inline uint64_t popcount128(uint128_t w)
 // Returns the number of leading zeros in the bits.
 inline uint32_t clz32(uint32_t v)
 {
-   static const int deBruijn_values[32] = {
-      0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30,
-      8, 12, 20, 28, 15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31
-   };
-   v |= v >> 1;
-   v |= v >> 2;
-   v |= v >> 4;
-   v |= v >> 8;
-   v |= v >> 16;
-   return deBruijn_values[(uint32_t)(v * 0x07C4ACDDU) >> 27];
+   v = v | (v >> 1);
+   v = v | (v >> 2);
+   v = v | (v >> 4);
+   v = v | (v >> 8);
+   v = v | (v >> 16);
+   return popcount32(~v);
 }
 inline uint16_t clz16(uint16_t w)
 {
@@ -144,19 +166,19 @@ inline uint16_t clz16(uint16_t w)
 }
 inline uint64_t clz64(uint64_t w)
 {
-   uint32_t c = clz32((uint32_t)w);
-   return (c == 32 ? 32 + clz32((uint32_t)(w >> 32)) : c);
+   uint32_t c = clz32((uint32_t)(w >> 32));
+   return (c == 32 ? 32 + clz32((uint32_t)w) : c);
 }
 #ifdef uint128_t
 inline uint64_t clz128(uint128_t w)
 {
-   uint32_t c = clz32((uint32_t)w);
+   uint32_t c = clz32((uint32_t)(w >> 96));
    if (c < 32) return c;
-   c = clz32((uint32_t)(w >> 32));
-   if (c < 32) return c + 32;
    c = clz32((uint32_t)(w >> 64));
+   if (c < 32) return c + 32;
+   c = clz32((uint32_t)(w >> 32));
    if (c < 32) return c + 64;
-   return clz32((uint32_t)(w >> 96)) + 96;
+   return clz32((uint32_t)w) + 96;
 }
 #endif
 // ctz(bits)
@@ -175,19 +197,19 @@ inline uint16_t ctz16(uint16_t w)
 }
 inline uint64_t ctz64(uint64_t w)
 {
-   uint32_t c = ctz32((uint32_t)(w >> 32));
-   return (c == 32 ? 32 + ctz32((uint32_t)w) : c);
+   uint32_t c = ctz32((uint32_t)w);
+   return (c == 32 ? 32 + ctz32((uint32_t)(w >> 32)) : c);
 }
 #ifdef uint128_t
 inline uint128_t ctz128(uint128_t w)
 {
-   uint32_t c = ctz32((uint32_t)(w >> 96));
+   uint32_t c = ctz32((uint32_t)w);
    if (c < 32) return c;
-   c = ctz32((uint32_t)(w >> 64));
-   if (c < 32) return c + 32;
    c = ctz32((uint32_t)(w >> 32));
+   if (c < 32) return c + 32;
+   c = ctz32((uint32_t)(w >> 64));
    if (c < 32) return c + 64;
-   return ctz32((uint32_t)w) + 96;
+   return ctz32((uint32_t)(w >> 96)) + 96;
 }
 #endif
 // lowmask(bitno)
@@ -205,7 +227,8 @@ inline hash_t lowmask_hash(hash_t bitno)
 }
 // The mask of the bits that represent the depth of the node-id in a PTree.
 // const bits_t PHAMT_DEPTH_MASK = lowmask_bits(PHAMT_TWIG_SHIFT);
-#define PHAMT_DEPTH_MASK ((BITS_ONE << PHAMT_TWIG_SHIFT) - BITS_ONE)
+#define PHAMT_DEPTH_MASK_BITS ((BITS_ONE << PHAMT_TWIG_SHIFT) - BITS_ONE)
+#define PHAMT_DEPTH_MASK_HASH ((HASH_ONE << PHAMT_TWIG_SHIFT) - HASH_ONE)
 // highmask(bitno)
 // Yields a mask of all bits above the given bit number set to true and all
 // bits below that number set to true. The bit itself is set to true. Bits are
@@ -225,7 +248,7 @@ inline hash_t highmask_hash(hash_t bitno)
 // the theoretical complete tree, not in the reified tree represented in memory.
 inline hash_t phamt_depth(hash_t nodeid)
 {
-   return nodeid & PHAMT_DEPTH_MASK;
+   return nodeid & PHAMT_DEPTH_MASK_HASH;
 }
 // depth_to_startbit(depth)
 // Yields the first bit in the hash type for the given depth.
@@ -314,15 +337,15 @@ inline hash_t phamt_isbeneath(hash_t nodeid, hash_t leafid)
    hash_t mask = phamt_nodemask(nodeid);
    return leafid <= (nodeid | mask) && leafid >= (nodeid & ~mask);
 }
-// phamt_lowbitdiff(id1, id2)
+// phamt_highbitdiff(id1, id2)
 // Yields the highest bit that is different between id1 and id2.
-inline bits_t phamt_lowbitdiff_bits(bits_t id1, bits_t id2)
+inline bits_t phamt_highbitdiff_bits(bits_t id1, bits_t id2)
 {
-   return clz_bits(id1 ^ id2);
+   return BITS_BITCOUNT - clz_bits(id1 ^ id2) - 1;
 }
-inline hash_t phamt_lowbitdiff_hash(hash_t id1, hash_t id2)
+inline hash_t phamt_highbitdiff_hash(hash_t id1, hash_t id2)
 {
-   return clz_hash(id1 ^ id2);
+   return HASH_BITCOUNT - clz_hash(id1 ^ id2) - 1;
 }
 
 //------------------------------------------------------------------------------
@@ -355,8 +378,7 @@ PHAMT_t phamt_copy(PHAMT_t node);
 PHAMT_t phamt_copy_addcell(PHAMT_t node, cellindex_t ci);
 PHAMT_t phamt_copy_delcell(PHAMT_t node, cellindex_t ci);
 // Additional constructors that are part of the Python interface.
-PyObject* phamt_from_kvs(PyObject* self, PyObject *const *args, Py_ssize_t nargs);
-PyObject* phamt_from_seq(PyObject* self, PyObject *const *args, Py_ssize_t nargs);
+PyObject* phamt_from_list(PyObject* self, PyObject *const *args, Py_ssize_t nargs);
 
 // Get the number of cells (not the number of elements).
 inline bits_t phamt_cellcount(PHAMT_t u)
@@ -378,18 +400,16 @@ inline hash_t phamt_cellindex(hash_t id, bits_t bits, hash_t leafid,
    hash_t bit0, shift, depth = phamt_depth(id);
    bit0 = depth_to_startbit(depth);
    shift = depth_to_shift(depth);
-   // Grab the index out of the leaf id. (We don't need leafid after
-   // this, so we upcycle it into is_present.)
+   // Grab the index out of the leaf id.
    ci->bitindex = (leafid >> bit0) & lowmask_hash(shift);
-   leafid = phamt_isbeneath(id, leafid);
-   if (!leafid) {
-      ci->cellindex = 0;
-      return 0;
-   } else {
+   if (phamt_isbeneath(id, leafid)) {
       // Get the cellindex.
       ci->cellindex = popcount_bits(bits & lowmask_bits(ci->bitindex));
       // The return value just depends on whether the bit is set.
       return bits & (BITS_ONE << ci->bitindex);
+   } else {
+      ci->cellindex = 0xff;
+      return 0;
    }
 }
 inline hash_t phamt_cellindex_nocheck(hash_t id, bits_t bits, hash_t leafid,
@@ -401,7 +421,7 @@ inline hash_t phamt_cellindex_nocheck(hash_t id, bits_t bits, hash_t leafid,
    // this, so we upcycle it into is_present.)
    ci->bitindex = (leafid >> bit0) & lowmask_hash(shift);
    // Get the cellindex.
-   ci->cellindex = BITS_ONE + popcount_bits(bits & lowmask_bits(shift));
+   ci->cellindex = popcount_bits(bits & lowmask_bits(ci->bitindex));
    // The return value just depends on whether the bit is set.
    return bits & (BITS_ONE << ci->bitindex);
 }
@@ -448,64 +468,62 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
    shift = depth_to_shift(depth);
    // Is the key beneath this node or not?
    h = phamt_cellindex(node->address, node->bits, k, &ci);
-   if (phamt_isbeneath(node->address, k)) {
+   if (h) {
+      // This means that the bit is set, so we need to either update a leaf or
+      // continue to search down for a twig.
+      if (depth == PHAMT_TWIG_DEPTH) {
+         // We'e replacing a leaf. Go ahead and alloc a copy (this increases
+         // the refcount for everything, so we need to deref the old child.
+         PyObject* obj = (PyObject*)node->cells[ci.cellindex];
+         if (obj == v) {
+            Py_INCREF(node);
+            return node;
+         }
+         u = phamt_copy(node);
+         u->cells[ci.cellindex] = (void*)v;
+         Py_INCREF(v);
+         Py_DECREF(obj);
+      } else {
+         // We pass control on down and return a copy of ourselves on the way
+         // back up.
+         PyObject* oldcell = (PyObject*)node->cells[ci.cellindex];
+         PHAMT_t newcell = (PHAMT_t)phamt_assoc((PHAMT_t)oldcell, k, v);
+         if ((PHAMT_t)oldcell == newcell) {
+            Py_DECREF(newcell);
+            Py_INCREF(node);
+            return node;
+         }
+         // We make a copy, which increments the refcounts, but we'll have to
+         // deref the oldcell due to this.
+         u = phamt_copy(node);
+         u->numel += newcell->numel - ((PHAMT_t)oldcell)->numel;
+         u->cells[ci.cellindex] = newcell;
+         // We no longer hold this reference.
+         Py_DECREF(oldcell);
+         // The new cell u now inherits the reference to newcell; the caller
+         // inherits the reference for u.
+      }
+   } else if (ci.cellindex < 0xff) {
       // The key is beneath this node, so we will dig down until we find the
       // correct place for this key.
-      bits_t flag = (BITS_ONE << ci.bitindex);
-      // Grab the index out of the key.
       // Okay, is the node a twig or not?
       if (depth == PHAMT_TWIG_DEPTH) {
-         if (node->bits & flag) {
-            // We'e replacing a leaf. Go ahead and alloc a copy (this increases
-            // the refcount for everything, so we need to deref the old child.
-            PyObject* obj = (PyObject*)node->cells[ci.cellindex];
-            if (obj == v) {
-               Py_INCREF(node);
-               return node;
-            }
-            u = phamt_copy(node);
-            u->cells[ci.cellindex] = (void*)v;
-            Py_INCREF(v);
-            Py_DECREF(obj);
-         } else {
-            // We're adding a new leaf. This updates refcounts for everything
-            // except the replaced cell.
-            u = phamt_copy_addcell(node, ci);
-            u->cells[ci.cellindex] = (void*)v;
-            u->numel = node->numel + 1;
-            Py_INCREF(v);
-         }
+         // We're adding a new leaf. This updates refcounts for everything
+         // except the replaced cell.
+         u = phamt_copy_addcell(node, ci);
+         u->cells[ci.cellindex] = (void*)v;
+         u->numel = node->numel + 1;
+         Py_INCREF(v);
       } else {
          // We are not a twig.
-         if (h) {
-            // We pass control on down and return a copy of ourselves on the way
-            // back up.
-            PyObject* oldcell = (PyObject*)node->cells[ci.cellindex];
-            PHAMT_t newcell = (PHAMT_t)phamt_assoc((PHAMT_t)oldcell, k, v);
-            if ((PHAMT_t)oldcell == newcell) {
-               Py_DECREF(newcell);
-               Py_INCREF(node);
-               return node;
-            }
-            // We make a copy, which increments the refcounts, but we'll have to
-            // deref the oldcell due to this.
-            u = phamt_copy(node);
-            u->numel += newcell->numel - ((PHAMT_t)oldcell)->numel;
-            u->cells[ci.cellindex] = newcell;
-            // We no longer hold this reference.
-            Py_DECREF(oldcell);
-            // The new cell u now inherits the reference to newcell; the caller
-            // inherits the reference for u.
-         } else {
-            // We are adding a twig node containing just the leaf below us. This
-            // copy function auto-updates the refcounts for all children.
-            u = phamt_copy_addcell(node, ci);
-            kv = phamt_from_kv(k, v);
-            ++(u->numel);
-            u->cells[ci.cellindex] = (void*)kv;
-            // u now inherits the ref for kv, and the caller inherits the ref
-            // for u. So we can just return the new object.
-         }
+         // We are adding a twig node containing just the leaf below us. This
+         // copy function auto-updates the refcounts for all children.
+         u = phamt_copy_addcell(node, ci);
+         kv = phamt_from_kv(k, v);
+         ++(u->numel);
+         u->cells[ci.cellindex] = (void*)kv;
+         // u now inherits the ref for kv, and the caller inherits the ref
+         // for u. So we can just return the new object.
       }
    } else {
       // The key isn't beneath this node, so we need to make a higher up node
@@ -514,7 +532,7 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
       kv = phamt_from_kv(k, v);
       // What's the highest bit at which they differ?
       h = highmask_hash(bit0 + shift);
-      h = phamt_lowbitdiff_hash(node->address & h, k & h);
+      h = phamt_highbitdiff_hash(node->address & h, k & h);
       if (h <= HASH_BITCOUNT - PHAMT_ROOT_SHIFT) {
          // We're allocating a new non-root node.
          bit0 = (h - PHAMT_TWIG_SHIFT) / PHAMT_NODE_SHIFT;
@@ -535,7 +553,7 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
       u->address = phamt_id(h, newdepth);
       u->bits = 0;
       h = (HASH_ONE << shift) - HASH_ONE;
-      u->bits |= BITS_ONE << (h & (u->address >> bit0));
+      u->bits |= BITS_ONE << (h & (node->address >> bit0));
       u->bits |= BITS_ONE << (h & (k >> bit0));
       if (k < node->address) {
          u->cells[0] = (void*)kv;
@@ -756,9 +774,9 @@ static void phamt_format(PHAMT_t node, char* buf)
       bi = ctz_bits(bits);
       bits &= ~(BITS_ONE << bi);
       if (depth == PHAMT_TWIG_DEPTH) {
-         sprintf(buf, "%s%s%u:%p",
+         sprintf(buf, "%s%s%u ",
                  buf, (*buf ? ", " : "<|"),
-                 (unsigned)bi, node->cells[ci]);
+                 (unsigned)bi);
       } else {
          sprintf(buf, "%s%s%u:",
                  buf, (*buf ? ", " : "<|"),
@@ -767,7 +785,8 @@ static void phamt_format(PHAMT_t node, char* buf)
       }
    }
    if (ncells == 0) sprintf(buf, "<|");
-   sprintf(buf, "%s|>", buf);
+   sprintf(buf, "%s; d=%u, id=%p|>",
+           buf, (unsigned)depth, (void*)(node->address & ~PHAMT_DEPTH_MASK_HASH));
 }
 static PyObject* phamt_py_repr(PHAMT_t self)
 {
@@ -801,11 +820,9 @@ static PyMethodDef PHAMT_methods[] = {
    // For JSON/pickle serialization.
    {"__reduce__", (PyCFunction)phamt_py_reduce, METH_NOARGS, NULL},
    {"__dump__", (PyCFunction)phamt_py_dump, METH_NOARGS, NULL},
-   {"from_kvs", (PyCFunction)phamt_from_kvs, METH_FASTCALL,
-    "Constructs a PHAMT object from an iterable of key-value pairs."},
-   {"from_seq", (PyCFunction)phamt_from_seq, METH_FASTCALL,
-    ("Constructs a PHAMT object from a sequence of values, which are assigned the "
-     "keys 0, 1, 2, etc.")},
+   {"from_list", (PyCFunction)phamt_from_list, METH_FASTCALL,
+    ("Constructs a PHAMT object from a sequence or iterable of values, which"
+     " are assigned the keys 0, 1, 2, etc. in iteration order.")},
    {NULL, NULL, 0, NULL}
 };
 static PySequenceMethods PHAMT_as_sequence = {
@@ -916,7 +933,7 @@ PHAMT_t phamt_from_kv(hash_t k, PyObject* v)
    PHAMT_t node = phamt_new(1);
    bits_t twigmask = (BITS_ONE << PHAMT_TWIG_SHIFT) - BITS_ONE;
    node->bits = (BITS_ONE << (k & twigmask));
-   node->address = phamt_id(k & ~PHAMT_DEPTH_MASK, PHAMT_TWIG_DEPTH);
+   node->address = phamt_id(k & ~PHAMT_DEPTH_MASK_HASH, PHAMT_TWIG_DEPTH);
    node->numel = 1;
    node->cells[0] = (void*)v;
    // Update that refcount and notify the GC tracker!
@@ -987,12 +1004,8 @@ PHAMT_t phamt_copy_delcell(PHAMT_t node, struct cellindex_data ci)
 }
 
 //------------------------------------------------------------------------------
-// Constructors (from an interator of key-value tuples or from an array).
-PyObject* phamt_from_kvs(PyObject* self, PyObject *const *args, Py_ssize_t nargs)
-{
-   return PyLong_FromLong(nargs);
-}
-PyObject* phamt_from_seq(PyObject* self, PyObject *const *args, Py_ssize_t nargs)
+// Constructors (from an interator or array).
+PyObject* phamt_from_list(PyObject* self, PyObject *const *args, Py_ssize_t nargs)
 {
    return PyLong_FromLong(nargs * 2);
 }

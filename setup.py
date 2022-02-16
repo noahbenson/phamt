@@ -12,7 +12,7 @@ setup(
     author_email='nben@uw.edu',
     url='https://github.com/noahbenson/phamt/',
     license='MIT',
-    packages=['phamt'],
+    packages=['phamt', 'phamt.test'],
     ext_modules=[Extension('phamt.core', ['phamt/phamt.c'])],
     package_data={'': ['LICENSE.txt']},
     include_package_data=True,
