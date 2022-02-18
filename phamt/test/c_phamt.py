@@ -34,12 +34,14 @@ class TestPHAMT(TestCase):
                 v = set([ii])
                 vr = ref(v)
                 k = randint(minint, maxint)
+                #print(f"     assoc {k}")
                 u = u.assoc(k, v)
                 d[k] = vr
                 inserts.append(vr)
             else:
                 # Choose k frmo in d
                 k = choice(list(d))
+                #print(f"     dissoc {k}")
                 u = u.dissoc(k)
                 del d[k]
             # At every step, these must be equal.
@@ -135,3 +137,4 @@ class TestPHAMT(TestCase):
         gc.collect()
         for r in assocs:
             self.assertTrue(r() is None)
+
