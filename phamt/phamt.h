@@ -7,7 +7,7 @@
 #define __phamt_phamt_h_754b8b4b82e87484dd015341f7e9d210
 
 //------------------------------------------------------------------------------
-// Type Declarations
+// Type Declaration and Configuration
 
 // The type of the hash.
 // Python itself uses signed integers for hashes (Py_hash_t), but we want to
@@ -16,10 +16,55 @@
 // defined from Py_ssize_t, which in turn is defined from ssize_t), but size_t
 // is also unsigned, so we use it.
 typedef size_t hash_t;
-#define PHAMT_HASH_MAX SIZE_MAX
+#define HASH_MAX SIZE_MAX
+// Figure out what size the hash actually is and define some things based on it.
+#if   (HASH_MAX >> 16 == 0)
+#     define HASH_BITCOUNT 16
+#     define PHAMT_ROOT_SHIFT 1
+#elif (HASH_MAX >> 32 == 0)
+#     define HASH_BITCOUNT 32
+#     define PHAMT_ROOT_SHIFT 2
+#elif (HASH_MAX >> 64 == 0)
+#     define HASH_BITCOUNT 64
+#     define PHAMT_ROOT_SHIFT 4
+#elif (HASH_MAX >> 128 == 0)
+#     define HASH_BITCOUNT 128
+#     define PHAMT_ROOT_SHIFT 3
+#else
+#     error unhandled size for hash_t
+#endif
+// We use a constant shift of 5 throughout except at the root node (which can't
+// be shifted at 5 due to how the bits line-up.
+#define PHAMT_NODE_SHIFT 5
+#define PHAMT_TWIG_SHIFT 5
+// Some consequences of the above definitions
+#define PHAMT_ROOT_FIRSTBIT (HASH_BITCOUNT - PHAMT_ROOT_SHIFT)
+#define PHAMT_ROOT_NCHILD   (1 << PHAMT_ROOT_SHIFT)
+#define PHAMT_NODE_NCHILD   (1 << PHAMT_NODE_SHIFT)
+#define PHAMT_TWIG_NCHILD   (1 << PHAMT_TWIG_SHIFT)
+#define PHAMT_NODE_BITS     (HASH_BITCOUNT - PHAMT_ROOT_SHIFT - PHAMT_TWIG_SHIFT)
+#define PHAMT_NODE_LEVELS   (PHAMT_NODE_BITS / PHAMT_NODE_SHIFT)
+#define PHAMT_LEVELS        (PHAMT_NODE_LEVELS + 2)
+#define PHAMT_ROOT_DEPTH    0
+#define PHAMT_TWIG_DEPTH    (PHAMT_ROOT_DEPTH + PHAMT_NODE_LEVELS + 1)
+#define PHAMT_LEAF_DEPTH    (PHAMT_TWIG_DEPTH + 1)
+#define PHAMT_TWIG_MASK     ((HASH_ONE << PHAMT_TWIG_SHIFT) - HASH_ONE)
 // The typedef for the PHAMT exists here, but the type isn't defined in the
 // header--this is just to encapsulate the immutable data.
 typedef struct PHAMT* PHAMT_t;
+// Additionally an iterator type for the PHAMT. This is not a python iterator--
+// it is a C iterator type.
+struct PHAMTIter {
+   // This is guaranteed to be enough space for the search
+   PHAMT_t node[PHAMT_LEAF_DEPTH];
+   uint8_t cellindex[PHAMT_LEAF_DEPTH];
+   uint8_t updepth[PHAMT_LEAF_DEPTH];
+   // Whether there were more items. If the found field is 1 when the iterator
+   // functions (phamt_first or phamt_next) return, then the end of the PHAMT
+   // was reached.
+   uint8_t found;
+};
+
 
 //------------------------------------------------------------------------------
 // Public API
@@ -68,5 +113,18 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, void* v);
 // values and touches objects should be correctly reference-tracked, and this
 // function's return-value has been reference-incremented for the caller.
 PHAMT_t phamt_dissoc(PHAMT_t node, hash_t k);
+// phamt_first(node, iter)
+// Returns the first item in the phamt node and sets the iterator accordingly.
+// If the depth in the iter is ever set to 0 when this function returns, that
+// means that there are no items to iterate (the return value will also be
+// NULL in this case). No refcounting is performed by this function.
+void* phamt_first(PHAMT_t node, struct PHAMTIter* iter);
+// phamt_next(node, iter)
+// Returns the next item in the phamt node and updates the iterator accordingly.
+// If the depth in the iter is ever set to 0 when this function returns, that
+// means that there are no items to iterate (the return value will also be
+// NULL in this case). No refcounting is performed by this function.
+void* phamt_next(PHAMT_t node, struct PHAMTIter* iter);
+
 
 #endif // ifndef __phamt_phamt_h_754b8b4b82e87484dd015341f7e9d210

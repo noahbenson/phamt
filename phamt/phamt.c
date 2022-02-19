@@ -3,9 +3,6 @@
 // Implemntation of the core phamt C data structures.
 // by Noah C. Benson
 
-// (This is used by the phamt.h header file.)
-#define __phamt_phamt_c_290301a044d09f4211d799b982b25688
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -13,123 +10,101 @@
 #include <Python.h>
 #include "phamt.h"
 
-// Some configuration ----------------------------------------------------------
+//------------------------------------------------------------------------------
+// Some configuration
 
 // If we want to print debug statements, we can define the following:
 //#define __PHAMT_DEBUG
+// The consequences: (some functions for debugging).
 #ifdef __PHAMT_DEBUG
-#define dbgmsg(...) (fprintf(stderr, __VA_ARGS__))
-#define dbgnode(prefix, u) \
-   dbgmsg("%s node={addr=(%p, %u, %u, %u),\n"                    \
-          "%s       numel=%u, bits=%p,\n"                        \
-          "%s       flags={pyobj=%u, firstn=%u}}\n",             \
-          (prefix),                                              \
-          (void*)(u)->address, (u)->addr_depth,                  \
-          (u)->addr_startbit, (u)->addr_shift,                   \
-          (prefix),                                              \
-          (unsigned)(u)->numel, (void*)((intptr_t)(u)->bits),    \
-          (prefix),                                              \
-          (u)->flag_pyobject, (u)->flag_firstn)
-#define dbgci(prefix, ci) \
-   dbgmsg("%s ci={found=%u, beneath=%u, cell=%u, bit=%u}\n",    \
-          (prefix), (ci).is_found, (ci).is_beneath,             \
-          (ci).cellindex, (ci).bitindex)
+#  define dbgmsg(...) (fprintf(stderr, __VA_ARGS__))
+#  define dbgnode(prefix, u) \
+     dbgmsg("%s node={addr=(%p, %u, %u, %u),\n"                    \
+            "%s       numel=%u, bits=%p,\n"                        \
+            "%s       flags={pyobj=%u, firstn=%u}}\n",             \
+            (prefix),                                              \
+            (void*)(u)->address, (u)->addr_depth,                  \
+            (u)->addr_startbit, (u)->addr_shift,                   \
+            (prefix),                                              \
+            (unsigned)(u)->numel, (void*)((intptr_t)(u)->bits),    \
+            (prefix),                                              \
+            (u)->flag_pyobject, (u)->flag_firstn)
+#  define dbgci(prefix, ci)                                       \
+     dbgmsg("%s ci={found=%u, beneath=%u, cell=%u, bit=%u}\n",    \
+            (prefix), (ci).is_found, (ci).is_beneath,             \
+            (ci).cellindex, (ci).bitindex)
 #else
-#define dbgmsg(...)
-#define dbgnode(prefix, u)
-#define dbgci(prefix, ci)
+#  define dbgmsg(...)
+#  define dbgnode(prefix, u)
+#  define dbgci(prefix, ci)
 #endif
 #define MAX_64BIT 0xffffffffffffffff
 // Possibly, the uint128_t isn't defined, but could be...
 #ifndef uint128_t
 #  if defined ULLONG_MAX && (ULLONG_MAX >> 64 == MAX_64BIT)
-typedef unsigned long long uint128_t;
+   typedef unsigned long long uint128_t;
 #  endif
 #endif
 // Handy constant values.
 #define HASH_ZERO ((hash_t)0)
 #define HASH_ONE  ((hash_t)1)
-#define HASH_MAX PHAMT_HASH_MAX // from the header
 // The bits type is also defined here.
 typedef uint32_t bits_t;
 #define BITS_BITCOUNT 32
 #define BITS_MAX 0xffffffff
-// We use a constant shift of 5 throughout except at the root node (which can't
-// be shifted at 5 due to how the bits line-up.
-#define PHAMT_NODE_SHIFT 5
-#define PHAMT_TWIG_SHIFT 5
 // Number of bits in the total addressable hash-space of a PHAMT.
 // Only certain values are supported. The popcount, clz, and ctz functions are
 // defined below.
 #define popcount_bits popcount32
 #define clz_bits      clz32
 #define ctz_bits      ctz32
-#if   (HASH_MAX >> 16 == 0)
-#     define HASH_BITCOUNT    16
-#     define PHAMT_ROOT_SHIFT 1
+#if   (HASH_BITCOUNT == 16)
 #     define popcount_hash    popcount16
 #     define clz_hash         clz16
 #     define ctz_hash         ctz16
-#elif (HASH_MAX >> 32 == 0)
-#     define HASH_BITCOUNT    32
-#     define PHAMT_ROOT_SHIFT 2
+#elif (HASH_BITCOUNT == 32)
 #     define popcount_hash    popcount32
 #     define clz_hash         clz32
 #     define ctz_hash         ctz32
-#elif (HASH_MAX >> 64 == 0)
-#     define HASH_BITCOUNT    64
-#     define PHAMT_ROOT_SHIFT 4
+#elif (HASH_BITCOUNT == 64)
 #     define popcount_hash    popcount64
 #     define clz_hash         clz64
 #     define ctz_hash         ctz64
-#elif (HASH_MAX >> 128 == 0)
-#     define HASH_BITCOUNT    128
-#     define PHAMT_ROOT_SHIFT 3
+#elif (HASH_BITCOUNT == 128)
 #     define popcount_hash    popcount128
 #     define clz_hash         clz128
 #     define ctz_hash         ctz128
 #else
 #     error unhandled size for hash_t
 #endif
-#define PHAMT_ROOT_FIRSTBIT (HASH_BITCOUNT - PHAMT_ROOT_SHIFT)
-#define PHAMT_ROOT_NCHILD   (1 << PHAMT_ROOT_SHIFT)
-#define PHAMT_NODE_NCHILD   (1 << PHAMT_NODE_SHIFT)
-#define PHAMT_TWIG_NCHILD   (1 << PHAMT_TWIG_SHIFT)
-// We need to make sure the value we get for the bits_t is safe!
-#define PHAMT_NODE_BITS     (HASH_BITCOUNT - PHAMT_ROOT_SHIFT - PHAMT_TWIG_SHIFT)
-#define PHAMT_NODE_LEVELS   (PHAMT_NODE_BITS / PHAMT_NODE_SHIFT)
-#define PHAMT_LEVELS        (PHAMT_NODE_LEVELS + 2)
-#define PHAMT_ROOT_DEPTH    0
-#define PHAMT_TWIG_DEPTH    (PHAMT_ROOT_DEPTH + PHAMT_NODE_LEVELS + 1)
-#define PHAMT_LEAF_DEPTH    (PHAMT_TWIG_DEPTH + 1)
-#define PHAMT_TWIG_MASK     ((HASH_ONE << PHAMT_TWIG_SHIFT) - HASH_ONE)
 #define BITS_ZERO           ((bits_t)0)
 #define BITS_ONE            ((bits_t)1)
-#define PHAMT_DOCSTRING                                                         \
-   ("A Persistent Hash Array Mapped Trie (PHAMT) type.\n"                       \
-    "\n"                                                                        \
-    "The `PHAMT` class represents a minimal immutable persistent mapping type\n"\
-    "that can be used to implement persistent collections in Python\n"          \
-    "efficiently. A `PHAMT` object is essentially a persistent dictionary\n"    \
-    "that requires that all keys be Python integers (hash values); values may\n"\
-    "be any Python objects. `PHAMT` objects are highly efficient at storing\n"  \
-    "either sparse hash values or lists of consecutive hash values, such as\n"  \
-    "when the keys `0`, `1`, `2`, etc. are used.\n"                             \
-    "\n"                                                                        \
-    "To add or remove key/valye pairs from a `PHAMT`, the methods\n"            \
-    "`phamt_obj.assoc(k, v)` and `phamt_obj.dissoc(k)`, both of which return\n" \
-    "copies of `phamt_obj` with the requested change.\n"                        \
-    "\n"                                                                        \
-    "`PHAMT` objects can be created in the following ways:\n"                   \
-    " * by using `phamt_obj.assic(k,v)` or `phamt_obj.dissoc(k)` on existing\n" \
-    "   `PHAMT` objects, such as the `PHAMT.empty` object, which represents\n"  \
-    "   an empty `PHAMT`;\n"                                                    \
-    " * by supplying the `PHAMT.from_list(iter_of_values)` with a list of\n"    \
-    "   values, which are assigned the keys `0`, `1`, `2`, etc.\n")
+#define PHAMT_DOCSTRING     (                                                  \
+   "A Persistent Hash Array Mapped Trie (PHAMT) type.\n"                       \
+   "\n"                                                                        \
+   "The `PHAMT` class represents a minimal immutable persistent mapping type\n"\
+   "that can be used to implement persistent collections in Python\n"          \
+   "efficiently. A `PHAMT` object is essentially a persistent dictionary\n"    \
+   "that requires that all keys be Python integers (hash values); values may\n"\
+   "be any Python objects. `PHAMT` objects are highly efficient at storing\n"  \
+   "either sparse hash values or lists of consecutive hash values, such as\n"  \
+   "when the keys `0`, `1`, `2`, etc. are used.\n"                             \
+   "\n"                                                                        \
+   "To add or remove key/valye pairs from a `PHAMT`, the methods\n"            \
+   "`phamt_obj.assoc(k, v)` and `phamt_obj.dissoc(k)`, both of which return\n" \
+   "copies of `phamt_obj` with the requested change.\n"                        \
+   "\n"                                                                        \
+   "`PHAMT` objects can be created in the following ways:\n"                   \
+   " * by using `phamt_obj.assic(k,v)` or `phamt_obj.dissoc(k)` on existing\n" \
+   "   `PHAMT` objects, such as the `PHAMT.empty` object, which represents\n"  \
+   "   an empty `PHAMT`;\n"                                                    \
+   " * by supplying the `PHAMT.from_list(iter_of_values)` with a list of\n"    \
+   "   values, which are assigned the keys `0`, `1`, `2`, etc.\n"              )
+
 
 //------------------------------------------------------------------------------
 // Utility functions.
-// Functions for making masks.
+// Functions for making masks and counting bits.
 
 // popcount(bits)
 // Returns the number of set bits in the given bits_t unsigned integer.
@@ -140,13 +115,13 @@ typedef uint32_t bits_t;
 #elif defined (ULLONG_MAX) && defined (__builtin_popcountll) && (ULLONG_MAX == BITS_MAX)
 #     define popcount32 __builtin_popcountll
 #else
-inline uint32_t popcount32(uint32_t w)
-{
-   w = w - ((w >> 1) & 0x55555555);
-   w = (w & 0x33333333) + ((w >> 2) & 0x33333333);
-   w = (w + (w >> 4)) & 0x0F0F0F0F;
-   return (w * 0x01010101) >> 24;
-}
+      inline uint32_t popcount32(uint32_t w)
+      {
+         w = w - ((w >> 1) & 0x55555555);
+         w = (w & 0x33333333) + ((w >> 2) & 0x33333333);
+         w = (w + (w >> 4)) & 0x0F0F0F0F;
+         return (w * 0x01010101) >> 24;
+      }
 #endif
 inline uint16_t popcount16(uint16_t w)
 {
@@ -159,19 +134,19 @@ inline uint16_t popcount16(uint16_t w)
 #elif defined (ULLONG_MAX) && defined (__builtin_popcountll) && (ULLONG_MAX == MAX_64BBIT)
 #     define popcount64 __builtin_popcountll
 #else
-inline uint64_t popcount64(uint64_t w)
-{
-   return popcount32((uint32_t)w) + popcount32((uint32_t)(w >> 32));
-}
+      inline uint64_t popcount64(uint64_t w)
+      {
+         return popcount32((uint32_t)w) + popcount32((uint32_t)(w >> 32));
+      }
 #endif
 #ifdef uint128_t
-inline uint64_t popcount128(uint128_t w)
-{
-   return (popcount32((uint32_t)w) +
-           popcount32((uint32_t)(w >> 32)) +
-           popcount32((uint32_t)(w >> 64)) +
-           popcount32((uint32_t)(w >> 96)))
-}
+      inline uint64_t popcount128(uint128_t w)
+      {
+         return (popcount32((uint32_t)w) +
+                 popcount32((uint32_t)(w >> 32)) +
+                 popcount32((uint32_t)(w >> 64)) +
+                 popcount32((uint32_t)(w >> 96)))
+      }
 #endif
 // clz(bits)
 // Returns the number of leading zeros in the bits.
@@ -194,16 +169,16 @@ inline uint64_t clz64(uint64_t w)
    return (c == 32 ? 32 + clz32((uint32_t)w) : c);
 }
 #ifdef uint128_t
-inline uint64_t clz128(uint128_t w)
-{
-   uint32_t c = clz32((uint32_t)(w >> 96));
-   if (c < 32) return c;
-   c = clz32((uint32_t)(w >> 64));
-   if (c < 32) return c + 32;
-   c = clz32((uint32_t)(w >> 32));
-   if (c < 32) return c + 64;
-   return clz32((uint32_t)w) + 96;
-}
+      inline uint64_t clz128(uint128_t w)
+      {
+         uint32_t c = clz32((uint32_t)(w >> 96));
+         if (c < 32) return c;
+         c = clz32((uint32_t)(w >> 64));
+         if (c < 32) return c + 32;
+         c = clz32((uint32_t)(w >> 32));
+         if (c < 32) return c + 64;
+         return clz32((uint32_t)w) + 96;
+      }
 #endif
 // ctz(bits)
 // Returns the number of trailing zeros in the bits.
@@ -225,16 +200,16 @@ inline uint64_t ctz64(uint64_t w)
    return (c == 32 ? 32 + ctz32((uint32_t)(w >> 32)) : c);
 }
 #ifdef uint128_t
-inline uint128_t ctz128(uint128_t w)
-{
-   uint32_t c = ctz32((uint32_t)w);
-   if (c < 32) return c;
-   c = ctz32((uint32_t)(w >> 32));
-   if (c < 32) return c + 32;
-   c = ctz32((uint32_t)(w >> 64));
-   if (c < 32) return c + 64;
-   return ctz32((uint32_t)(w >> 96)) + 96;
-}
+      inline uint128_t ctz128(uint128_t w)
+      {
+         uint32_t c = ctz32((uint32_t)w);
+         if (c < 32) return c;
+         c = ctz32((uint32_t)(w >> 32));
+         if (c < 32) return c + 32;
+         c = ctz32((uint32_t)(w >> 64));
+         if (c < 32) return c + 64;
+         return ctz32((uint32_t)(w >> 96)) + 96;
+      }
 #endif
 // lowmask(bitno)
 // Yields a mask of all bits above the given bit number set to false and all
@@ -387,7 +362,7 @@ inline hash_t phamt_highbitdiff_hash(hash_t id1, hash_t id2)
 }
 
 //------------------------------------------------------------------------------
-// (1) Core PHAMT implementation.
+// Core PHAMT implementation.
 struct PHAMT {
    // The Python stuff.
    PyObject_VAR_HEAD
@@ -420,11 +395,6 @@ struct PHAMT {
    // And the variable-length list of children.
    void* cells[];
 };
-#define PHAMT_SIZE sizeof(struct PHAMT)
-static PHAMT_t PHAMT_EMPTY = NULL;
-static PHAMT_t PHAMT_EMPTY_CTYPE = NULL;
-#define RETURN_EMPTY ({Py_INCREF(PHAMT_EMPTY); return PHAMT_EMPTY;})
-#define RETURN_EMPTY_CTYPE ({Py_INCREF(PHAMT_EMPTY_CTYPE); return PHAMT_EMPTY_CTYPE;})
 // A type foor passing information about cells.
 typedef struct cellindex_data {
    uint8_t bitindex;   // the bit index of the node
@@ -432,7 +402,11 @@ typedef struct cellindex_data {
    uint8_t is_beneath; // whether the key is beneath this node
    uint8_t is_found;   // whether the bit for the key is set
 } cellindex_t;
-
+#define PHAMT_SIZE sizeof(struct PHAMT)
+static PHAMT_t PHAMT_EMPTY = NULL;
+static PHAMT_t PHAMT_EMPTY_CTYPE = NULL;
+#define RETURN_EMPTY ({Py_INCREF(PHAMT_EMPTY); return PHAMT_EMPTY;})
+#define RETURN_EMPTY_CTYPE ({Py_INCREF(PHAMT_EMPTY_CTYPE); return PHAMT_EMPTY_CTYPE;})
 // We're going to define these constructors later when we have defined the type.
 static PHAMT_t phamt_new(unsigned ncells);
 static PHAMT_t phamt_copy_chgcell(PHAMT_t node, cellindex_t ci, void* val);
@@ -674,11 +648,13 @@ PHAMT_t phamt_dissoc(PHAMT_t node, hash_t k)
    return (PHAMT_t)u;
 }
 
+
 //------------------------------------------------------------------------------
 // Python Type and Module Code
 // This section contains all the code necessary to setup the Python PHAMT type
 // and register the module with Python.
 // Many of the functions below are just wrappers around the functions above.
+
 static PyObject* phamt_py_assoc(PyObject* self, PyObject* varargs)
 {
    hash_t h;
@@ -737,30 +713,10 @@ static PyObject* phamt_py_get(PyObject* self, PyObject* varargs)
       Py_RETURN_NONE;
    }
 }
-static PyObject* phamt_py_items(PyObject* self)
-{
-   return NULL; // #TODO
-}
-static PyObject* phamt_py_keys(PyObject* self)
-{
-   return NULL; // #TODO
-}
-static PyObject* phamt_py_values(PyObject* self)
-{
-   return NULL; // #TODO
-}
 static PyObject *PHAMT_py_getitem(PyObject *type, PyObject *item)
 {
    Py_INCREF(type);
    return type;
-}
-static PyObject* phamt_py_reduce(PyObject* self)
-{
-   return NULL; // #TODO
-}
-static PyObject* phamt_py_dump(PyObject* self)
-{
-   return NULL; // #TODO
 }
 static int phamt_tp_contains(PHAMT_t self, PyObject* key)
 {
@@ -836,56 +792,11 @@ static PyObject* phamt_tp_new(PyTypeObject *subtype, PyObject *args, PyObject *k
    Py_INCREF(PHAMT_EMPTY);
    return (PyObject*)PHAMT_EMPTY;
 }
-static PyObject* phamt_tp_init(PHAMT_t self, PyObject *args, PyObject *kw)
-{
-   return 0; // #TODO
-}
-static PyObject* phamt_py_hash(PyObject* self)
-{
-   return NULL; // #TODO
-}
-#if 0
-// This function is for debugging purposes only!
-// There is a potential buffer overflow error.
-static void phamt_format(PHAMT_t node, char* buf)
-{
-   bits_t ci, bi, ncells, bits;
-   hash_t depth;
-   depth = phamt_depth(node->address);
-   ncells = phamt_cellcount(node);
-   bits = node->bits;
-   for (ci = 0; ci < ncells; ++ci) {
-      bi = ctz_bits(bits);
-      bits &= ~(BITS_ONE << bi);
-      if (depth == PHAMT_TWIG_DEPTH) {
-         sprintf(buf, "%s%s%u ",
-                 buf, (*buf ? ", " : "<|"),
-                 (unsigned)bi);
-      } else {
-         sprintf(buf, "%s%s%u:",
-                 buf, (*buf ? ", " : "<|"),
-                 (unsigned)bi);
-         phamt_format(node->cells[ci], buf + strlen(buf));
-      }
-   }
-   if (ncells == 0) sprintf(buf, "<|");
-   sprintf(buf, "%s; d=%u, id=%p|>",
-           buf, (unsigned)depth, (void*)(node->address & ~PHAMT_DEPTH_MASK_HASH));
-}
-static PyObject* phamt_py_repr(PHAMT_t self)
-{
-   static char buf[1024*16];
-   *buf = 0;
-   phamt_format(self, buf);
-   return PyUnicode_FromFormat("%s", buf);
-}
-#else
 static PyObject* phamt_py_repr(PHAMT_t self)
 {
    dbgnode("[phamt_py_repr]", self);
    return PyUnicode_FromFormat("<PHAMT:n=%u>", (unsigned)self->numel);
 }
-#endif
 static void phamt_module_free(void* mod)
 {
    PHAMT_t tmp = PHAMT_EMPTY;
@@ -900,14 +811,9 @@ static PyMethodDef PHAMT_methods[] = {
    {"assoc", (PyCFunction)phamt_py_assoc, METH_VARARGS, NULL},
    {"dissoc", (PyCFunction)phamt_py_dissoc, METH_VARARGS, NULL},
    {"get", (PyCFunction)phamt_py_get, METH_VARARGS, NULL},
-   {"items", (PyCFunction)phamt_py_items, METH_NOARGS, NULL},
-   {"keys", (PyCFunction)phamt_py_keys, METH_NOARGS, NULL},
-   {"values", (PyCFunction)phamt_py_values, METH_NOARGS, NULL},
    //{"update", (PyCFunction)phamt_py_update, METH_VARARGS | METH_KEYWORDS, NULL},
    {"__class_getitem__", (PyCFunction)PHAMT_py_getitem, METH_O|METH_CLASS, NULL},
    // For JSON/pickle serialization.
-   {"__reduce__", (PyCFunction)phamt_py_reduce, METH_NOARGS, NULL},
-   {"__dump__", (PyCFunction)phamt_py_dump, METH_NOARGS, NULL},
    {"from_list", (PyCFunction)phamt_py_from_list, METH_FASTCALL,
     ("Constructs a PHAMT object from a sequence or iterable of values, which"
      " are assigned the keys 0, 1, 2, etc. in iteration order.")},
@@ -948,8 +854,6 @@ static PyTypeObject PHAMT_type = {
    // PHAMTs, like tuples, can't make ref links because they are 100% immutable.
    //.tp_clear = (inquiry)phamt_tp_clear,
    .tp_new = phamt_tp_new,
-   .tp_init = (initproc)phamt_tp_init,
-   .tp_hash = (hashfunc)phamt_py_hash,
    .tp_repr = (reprfunc)phamt_py_repr,
    .tp_str = (reprfunc)phamt_py_repr,
 };
@@ -1169,10 +1073,61 @@ static PHAMT_t phamt_copy_delcell(PHAMT_t node, struct cellindex_data ci)
    }
    return u;
 }
-
-//------------------------------------------------------------------------------
-// Constructors (from an interator or array).
 static PyObject* phamt_py_from_list(PyObject* self, PyObject *const *args, Py_ssize_t nargs)
 {
    return NULL; // #TODO
 }
+void* phamt_first(PHAMT_t node, struct PHAMTIter* iter)
+{
+   uint8_t d;
+   if (node->numel == 0) {
+      iter->found = 0;
+      return NULL;
+   }
+   // Just dig down the first child as far as possible
+   d = 0;
+   iter->node[0] = NULL;
+   do {
+      iter->updepth[node->addr_depth] = d;
+      d = node->addr_depth;
+      iter->node[d] = node;
+      iter->cellindex[d] = 0;
+      node = (PHAMT_t)node->cells[0];
+   } while (d < PHAMT_TWIG_DEPTH);
+   iter->found = 1;
+   return node;
+}
+void* phamt_next(PHAMT_t node, struct PHAMTIter* iter)
+{
+   uint8_t d, ci;
+   if (!iter->found) return NULL;
+   // We always start at twig depth; 
+   d = PHAMT_TWIG_DEPTH;
+   node = iter->node[d];
+   do {
+      ci = iter->cellindex[d];
+      ++ci;
+      if (ci < phamt_cellcount(node)) {
+         // We've found a point at which we can descend.
+         iter->cellindex[d] = ci;
+         node = node->cells[ci];
+         while (d < PHAMT_TWIG_DEPTH) {
+            iter->updepth[node->addr_depth] = d;
+            d = node->addr_depth;
+            iter->node[d] = node;
+            iter->cellindex[d] = 0;
+            node = (PHAMT_t)node->cells[0];
+         }
+         return node;
+      } else if (d == 0) {
+         break;
+      } else {
+         d = iter->updepth[d];
+         node = iter->node[d];
+      }
+   } while (node);
+   // If we reach this point, we didn't find anything.
+   iter->found = 0;
+   return NULL;
+}
+
