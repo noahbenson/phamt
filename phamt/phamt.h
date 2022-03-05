@@ -18,21 +18,34 @@
 typedef size_t hash_t;
 #define HASH_MAX SIZE_MAX
 // Figure out what size the hash actually is and define some things based on it.
-#if   (HASH_MAX >> 16 == 0)
+#define MAX_16BIT  0xffff
+#define MAX_32BIT  0xffffffff
+#define MAX_64BIT  0xffffffffffffffff
+#define MAX_128BIT 0xffffffffffffffffffffffffffffffff
+#if   (HASH_MAX == MAX_16BIT)
 #     define HASH_BITCOUNT 16
 #     define PHAMT_ROOT_SHIFT 1
-#elif (HASH_MAX >> 32 == 0)
+#elif (HASH_MAX == MAX_32BIT)
 #     define HASH_BITCOUNT 32
 #     define PHAMT_ROOT_SHIFT 2
-#elif (HASH_MAX >> 64 == 0)
+#elif (HASH_MAX == MAX_64BIT)
 #     define HASH_BITCOUNT 64
 #     define PHAMT_ROOT_SHIFT 4
-#elif (HASH_MAX >> 128 == 0)
+#elif (HASH_MAX == MAX_128BIT)
 #     define HASH_BITCOUNT 128
 #     define PHAMT_ROOT_SHIFT 3
 #else
 #     error unhandled size for hash_t
 #endif
+// Handy constant values.
+#define HASH_ZERO     ((hash_t)0)
+#define HASH_ONE      ((hash_t)1)
+// The bits type is also defined here.
+typedef uint32_t bits_t;
+#define BITS_BITCOUNT 32
+#define BITS_MAX      0xffffffff
+#define BITS_ZERO     ((bits_t)0)
+#define BITS_ONE      ((bits_t)1)
 // We use a constant shift of 5 throughout except at the root node (which can't
 // be shifted at 5 due to how the bits line-up.
 #define PHAMT_NODE_SHIFT 5
@@ -52,18 +65,414 @@ typedef size_t hash_t;
 // The typedef for the PHAMT exists here, but the type isn't defined in the
 // header--this is just to encapsulate the immutable data.
 typedef struct PHAMT* PHAMT_t;
-// Additionally an iterator type for the PHAMT. This is not a python iterator--
-// it is a C iterator type.
-struct PHAMTIter {
-   // This is guaranteed to be enough space for the search
-   PHAMT_t node[PHAMT_LEAF_DEPTH];
-   uint8_t cellindex[PHAMT_LEAF_DEPTH];
-   uint8_t updepth[PHAMT_LEAF_DEPTH];
-   // Whether there were more items. If the found field is 1 when the iterator
-   // functions (phamt_first or phamt_next) return, then the end of the PHAMT
-   // was reached.
-   uint8_t found;
+// Additionally an index and iterator type for the PHAMT. This is not a python
+// iterator--it is a C iterator type.
+typedef struct {
+   uint8_t bitindex;   // the bit index of the node
+   uint8_t cellindex;  // the cell index of the node
+   uint8_t is_beneath; // whether the key is beneath this node
+   uint8_t is_found;   // whether the bit for the key is set
+} PHAMTIndex_t;
+typedef struct {
+   PHAMT_t      node;  // The node that this location refers to.
+   PHAMTIndex_t index; // The cell-index that this location refers to.
+} PHAMTLoc_t;
+typedef struct {
+   // PHAMT_LEVELS is guaranteed to be enough space for any search.
+   // The steps along the path include both a node and an index each; in the
+   // indices, however, we don't actually need the is_beneath and is_found
+   // values at every level--instead we just need them once for the entire
+   // search that is being performd. Accordingly, we appropriate these
+   // values:
+   //  - steps[0].is_found stores the results of the overall search for a given
+   //    key (i.e., is it found in the node at all).
+   //  - steps[0].is_beneath stores the depth of the final node in the path. In
+   //    the case that this is 0xff, that means that the key is not beneath the
+   //    the requested node at all.
+   //  - steps[k].is_beneath for k > 0 is equal to the depth of the previous
+   //    node in the path; if there is no previus node, then the value is 0xff.
+   PHAMTLoc_t steps[PHAMT_LEVELS];
+} PHAMTPath_t;
+// PHAMTIndex_t, PHAMTLoc_t and PHAMTPath_t are not pointers, since they should
+// usually be allocated on the stack.
+struct PHAMT {
+   // The Python stuff.
+   PyObject_VAR_HEAD
+
+   // The node's address in the PHAMT.
+   hash_t address;
+   // The number of leaves beneath this node.
+   hash_t numel;
+   // The bitmask of children.
+   bits_t bits;
+
+   // What follows is a set of meta-data that also manages to fill in the other
+   // 32 bits of the 64-bit block that startd with bits.
+   //
+   // The PHAMT's first bit (this is enough for 256-bit integer hashes).
+   bits_t addr_startbit : 8;
+   // The PHAMT's depth.
+   bits_t addr_depth : 8;
+   // The PHAMT's shif).
+   bits_t addr_shift : 5;
+   // Whether the PHAMT is transient or not.
+   bits_t flag_transient : 1;
+   // Whether the PHAMT stores Python objects (1) or C objects (0).
+   bits_t flag_pyobject : 1;
+   // Whether the PHAMT stores all of its (n) cells in its first n nodes.
+   bits_t flag_firstn : 1;
+   // The remaining bits are just empty for now.
+   bits_t _empty : 8;
+   
+   // And the variable-length list of children.
+   void* cells[];
 };
+#define PHAMT_SIZE sizeof(struct PHAMT)
+// Possibly, the uint128_t isn't defined, but could be...
+#ifndef uint128_t
+#  if defined ULLONG_MAX && (ULLONG_MAX > MAX_64BIT) && (ULLONG_MAX >> 64 == MAX_64BIT)
+   typedef unsigned long long uint128_t;
+#  endif
+#endif
+// Number of bits in the total addressable hash-space of a PHAMT.
+// Only certain values are supported. The popcount, clz, and ctz functions are
+// defined below.
+#define popcount_bits popcount32
+#define clz_bits      clz32
+#define ctz_bits      ctz32
+#if   (HASH_BITCOUNT == 16)
+#     define popcount_hash    popcount16
+#     define clz_hash         clz16
+#     define ctz_hash         ctz16
+#elif (HASH_BITCOUNT == 32)
+#     define popcount_hash    popcount32
+#     define clz_hash         clz32
+#     define ctz_hash         ctz32
+#elif (HASH_BITCOUNT == 64)
+#     define popcount_hash    popcount64
+#     define clz_hash         clz64
+#     define ctz_hash         ctz64
+#elif (HASH_BITCOUNT == 128)
+#     define popcount_hash    popcount128
+#     define clz_hash         clz128
+#     define ctz_hash         ctz128
+#else
+#     error unhandled size for hash_t
+#endif
+#define PHAMT_DOCSTRING     (                                                  \
+   "A Persistent Hash Array Mapped Trie (PHAMT) type.\n"                       \
+   "\n"                                                                        \
+   "The `PHAMT` class represents a minimal immutable persistent mapping type\n"\
+   "that can be used to implement persistent collections in Python\n"          \
+   "efficiently. A `PHAMT` object is essentially a persistent dictionary\n"    \
+   "that requires that all keys be Python integers (hash values); values may\n"\
+   "be any Python objects. `PHAMT` objects are highly efficient at storing\n"  \
+   "either sparse hash values or lists of consecutive hash values, such as\n"  \
+   "when the keys `0`, `1`, `2`, etc. are used.\n"                             \
+   "\n"                                                                        \
+   "To add or remove key/valye pairs from a `PHAMT`, the methods\n"            \
+   "`phamt_obj.assoc(k, v)` and `phamt_obj.dissoc(k)`, both of which return\n" \
+   "copies of `phamt_obj` with the requested change.\n"                        \
+   "\n"                                                                        \
+   "`PHAMT` objects can be created in the following ways:\n"                   \
+   " * by using `phamt_obj.assic(k,v)` or `phamt_obj.dissoc(k)` on existing\n" \
+   "   `PHAMT` objects, such as the `PHAMT.empty` object, which represents\n"  \
+   "   an empty `PHAMT`;\n"                                                    \
+   " * by supplying the `PHAMT.from_list(iter_of_values)` with a list of\n"    \
+   "   values, which are assigned the keys `0`, `1`, `2`, etc.\n"              )
+
+
+//------------------------------------------------------------------------------
+// Private Utility functions.
+// Functions for making masks and counting bits mostly.
+
+// popcount(bits)
+// Returns the number of set bits in the given bits_t unsigned integer.
+#if   defined (__builtin_popcount) && (UINT_MAX == BITS_MAX)
+#     define popcount32 __builtin_popcount
+#elif defined (__builtin_popcountl) && (ULONG_MAX == BITS_MAX)
+#     define popcount32 __builtin_popcountl
+#elif defined (ULLONG_MAX) && defined (__builtin_popcountll) && (ULLONG_MAX == BITS_MAX)
+#     define popcount32 __builtin_popcountll
+#else
+      inline uint32_t popcount32(uint32_t w)
+      {
+         w = w - ((w >> 1) & 0x55555555);
+         w = (w & 0x33333333) + ((w >> 2) & 0x33333333);
+         w = (w + (w >> 4)) & 0x0F0F0F0F;
+         return (w * 0x01010101) >> 24;
+      }
+#endif
+inline uint16_t popcount16(uint16_t w)
+{
+   return popcount32((uint32_t)w);
+}
+#if   defined (__builtin_popcount) && (UINT_MAX == MAX_64BIT)
+#     define popcount64 __builtin_popcount
+#elif defined (__builtin_popcountl) && (ULONG_MAX == MAX_64BIT)
+#     define popcount64 __builtin_popcountl
+#elif defined (ULLONG_MAX) && defined (__builtin_popcountll) && (ULLONG_MAX == MAX_64BBIT)
+#     define popcount64 __builtin_popcountll
+#else
+      inline uint64_t popcount64(uint64_t w)
+      {
+         return popcount32((uint32_t)w) + popcount32((uint32_t)(w >> 32));
+      }
+#endif
+#ifdef uint128_t
+      inline uint64_t popcount128(uint128_t w)
+      {
+         return (popcount32((uint32_t)w) +
+                 popcount32((uint32_t)(w >> 32)) +
+                 popcount32((uint32_t)(w >> 64)) +
+                 popcount32((uint32_t)(w >> 96)))
+      }
+#endif
+// clz(bits)
+// Returns the number of leading zeros in the bits.
+inline uint32_t clz32(uint32_t v)
+{
+   v = v | (v >> 1);
+   v = v | (v >> 2);
+   v = v | (v >> 4);
+   v = v | (v >> 8);
+   v = v | (v >> 16);
+   return popcount32(~v);
+}
+inline uint16_t clz16(uint16_t w)
+{
+   return clz32((uint32_t)w) - 16;
+}
+inline uint64_t clz64(uint64_t w)
+{
+   uint32_t c = clz32((uint32_t)(w >> 32));
+   return (c == 32 ? 32 + clz32((uint32_t)w) : c);
+}
+#ifdef uint128_t
+      inline uint64_t clz128(uint128_t w)
+      {
+         uint32_t c = clz32((uint32_t)(w >> 96));
+         if (c < 32) return c;
+         c = clz32((uint32_t)(w >> 64));
+         if (c < 32) return c + 32;
+         c = clz32((uint32_t)(w >> 32));
+         if (c < 32) return c + 64;
+         return clz32((uint32_t)w) + 96;
+      }
+#endif
+// ctz(bits)
+// Returns the number of trailing zeros in the bits.
+inline uint32_t ctz32(uint32_t v)
+{
+   static const int deBruijn_values[32] = {
+      0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
+      31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
+   };
+   return deBruijn_values[((uint32_t)((v & -v) * 0x077CB531U)) >> 27];
+}
+inline uint16_t ctz16(uint16_t w)
+{
+   return ctz32((uint32_t)w);
+}
+inline uint64_t ctz64(uint64_t w)
+{
+   uint32_t c = ctz32((uint32_t)w);
+   return (c == 32 ? 32 + ctz32((uint32_t)(w >> 32)) : c);
+}
+#ifdef uint128_t
+      inline uint128_t ctz128(uint128_t w)
+      {
+         uint32_t c = ctz32((uint32_t)w);
+         if (c < 32) return c;
+         c = ctz32((uint32_t)(w >> 32));
+         if (c < 32) return c + 32;
+         c = ctz32((uint32_t)(w >> 64));
+         if (c < 32) return c + 64;
+         return ctz32((uint32_t)(w >> 96)) + 96;
+      }
+#endif
+// lowmask(bitno)
+// Yields a mask of all bits above the given bit number set to false and all
+// bits below that number set to true. The bit itself is set to false. Bits are
+// indexed starting at 0.
+// lowmask(bitno) is equal to ~highmask(bitno).
+inline bits_t lowmask_bits(bits_t bitno)
+{
+   return ((BITS_ONE << bitno) - BITS_ONE);
+}
+inline hash_t lowmask_hash(hash_t bitno)
+{
+   return ((HASH_ONE << bitno) - HASH_ONE);
+}
+// The mask of the bits that represent the depth of the node-id in a PTree.
+// const bits_t PHAMT_DEPTH_MASK = lowmask_bits(PHAMT_TWIG_SHIFT);
+#define PHAMT_DEPTH_MASK_BITS ((BITS_ONE << PHAMT_TWIG_SHIFT) - BITS_ONE)
+#define PHAMT_DEPTH_MASK_HASH ((HASH_ONE << PHAMT_TWIG_SHIFT) - HASH_ONE)
+// highmask(bitno)
+// Yields a mask of all bits above the given bit number set to true and all
+// bits below that number set to true. The bit itself is set to true. Bits are
+// indexed starting at 0.
+// highmask(bitno) is equal to ~lowmask(bitno).
+inline bits_t highmask_bits(bits_t bitno)
+{
+   return ~((BITS_ONE << bitno) - BITS_ONE);
+}
+inline hash_t highmask_hash(hash_t bitno)
+{
+   return ~((HASH_ONE << bitno) - HASH_ONE);
+}
+// is_firstn(bits)
+// True if the first n bits (and only those bits) are set (for any n) and False
+// otherwise.
+inline uint8_t is_firstn(bits_t bits)
+{
+   return lowmask_bits(BITS_BITCOUNT - clz_bits(bits)) == bits;
+}
+
+// ptree_depth(nodeaddr)
+// Yields the depth of the node with the given node address. This depth is in
+// the theoretical complete tree, not in the reified tree represented in memory.
+inline hash_t phamt_depth(hash_t nodeid)
+{
+   return nodeid & PHAMT_DEPTH_MASK_HASH;
+}
+// depth_to_startbit(depth)
+// Yields the first bit in the hash type for the given depth.
+inline hash_t depth_to_startbit(hash_t depth)
+{
+   if (depth == PHAMT_TWIG_DEPTH)
+      return 0;
+   else if (depth == 0)
+      return PHAMT_ROOT_FIRSTBIT;
+   else
+      return PHAMT_ROOT_FIRSTBIT - depth*PHAMT_NODE_SHIFT;
+}
+// depth_to_shift(depth)
+// Yields the first bit in the hash type for the given depth.
+inline hash_t depth_to_shift(hash_t depth)
+{
+   if (depth == PHAMT_TWIG_DEPTH)
+      return PHAMT_TWIG_SHIFT;
+   else if (depth == 0)
+      return PHAMT_ROOT_SHIFT;
+   else
+      return PHAMT_NODE_SHIFT;
+}
+// phamt_startbit(nodeid)
+// Yields the first has bit for the given ptree node id.
+inline hash_t phamt_startbit(hash_t nodeid)
+{
+   return depth_to_startbit(phamt_depth(nodeid));
+}
+// phamt_depthmask(depth)
+// Yields the mask that includes the address space for all nodes at or below the
+// given depth.
+inline hash_t phamt_depthmask(hash_t depth)
+{
+   if (depth == PHAMT_TWIG_DEPTH)
+      return (HASH_ONE << PHAMT_TWIG_SHIFT) - HASH_ONE;
+   else if (depth == 0)
+      return HASH_MAX;
+   else
+      return ((HASH_ONE << (PHAMT_ROOT_FIRSTBIT - (depth-1)*PHAMT_NODE_SHIFT))
+              - HASH_ONE);
+}
+// phamt_nodemask(nodeid)
+// Yields the lowmask for the node's top bit.
+inline hash_t phamt_nodemask(hash_t nodeid)
+{
+   return phamt_depthmask(phamt_depth(nodeid));
+}
+// phamt_shift(nodeid)
+// Yields the bitshift for the given ptree node id.
+inline hash_t phamt_shift(hash_t nodeid)
+{
+   return depth_to_shift(phamt_depth(nodeid));
+}
+// phamt_minleaf(nodeid)
+// Yields the minimum child leaf index associated with the given nodeid.
+inline hash_t phamt_minleaf(hash_t nodeid)
+{
+   return nodeid & ~phamt_nodemask(nodeid);
+}
+// phamt_maxleaf(nodeid)
+// Yields the maximum child leaf index assiciated with the given nodeid.
+inline hash_t phamt_maxleaf(hash_t nodeid)
+{
+   return nodeid | phamt_nodemask(nodeid);
+}
+// phamt_id(minleaf, depth)
+// Yields the node-id for the node whose minimum leaf and depth are given.
+inline hash_t phamt_id(hash_t minleaf, hash_t depth)
+{
+   return minleaf | depth;
+}
+// phamt_parentid(nodeid0)
+// Yields the node-id of the parent of the given node. Note that node 0 (the
+// tree's theoretical root) has no parent. If given a node id of 0, this
+// function will return an arbitrary large number.
+inline hash_t phamt_parentid(hash_t nodeid0)
+{
+   hash_t d = phamt_depth(nodeid0) - 1;
+   return phamt_id(nodeid0 & ~phamt_depthmask(d), d);
+}
+// phamt_isbeneath(nodeid, leafid)
+// Yields true if the given leafid can be found beneath the given node-id.
+inline hash_t phamt_isbeneath(hash_t nodeid, hash_t leafid)
+{
+   hash_t mask = phamt_nodemask(nodeid);
+   return leafid <= (nodeid | mask) && leafid >= (nodeid & ~mask);
+}
+// phamt_isbeneath_mask(nodeid, leafid, mask)
+// Yields true if the given leafid can be found beneath the given node-id.
+// Same as above, but if you already have the mask.
+inline hash_t phamt_isbeneath_mask(hash_t nodeid, hash_t leafid, hash_t mask)
+{
+   return leafid <= (nodeid | mask) && leafid >= (nodeid & ~mask);
+}
+// phamt_highbitdiff(id1, id2)
+// Yields the highest bit that is different between id1 and id2.
+inline bits_t phamt_highbitdiff_bits(bits_t id1, bits_t id2)
+{
+   return BITS_BITCOUNT - clz_bits(id1 ^ id2) - 1;
+}
+inline hash_t phamt_highbitdiff_hash(hash_t id1, hash_t id2)
+{
+   return HASH_BITCOUNT - clz_hash(id1 ^ id2) - 1;
+}
+// Get the number of cells (not the number of elements).
+inline bits_t phamt_cellcount(PHAMT_t u)
+{
+   return (bits_t)Py_SIZE(u);
+}
+// phamt_cellindex(node, leafid)
+// Yields a PHAMTIndex_t structure that indicates whether and where the leafid is
+// with respect to node.
+inline PHAMTIndex_t phamt_cellindex(PHAMT_t node, hash_t leafid)
+{
+   PHAMTIndex_t ci;
+   hash_t mask = phamt_depthmask(node->addr_depth);
+   ci.is_beneath = phamt_isbeneath_mask(node->address, leafid, mask);
+   // Grab the index out of the leaf id.
+   ci.bitindex = ((leafid >> node->addr_startbit) & 
+                  lowmask_hash(node->addr_shift));
+   // Get the cellindex.
+   ci.cellindex = (node->flag_firstn
+                   ? ci.bitindex
+                   : popcount_bits(node->bits & lowmask_bits(ci.bitindex)));
+   // is_found depends on whether the bit is set.
+   ci.is_found = (ci.is_beneath
+                  ? ((node->bits & (BITS_ONE << ci.bitindex)) != 0)
+                  : 0);
+   return ci;
+}
+// phamt_cellkey(ptree, childidx)
+// Yields the leafid (a hash_t value) of the key that goes with the particular
+// child index that is given. This only works correctly for twig nodes.
+inline hash_t phamt_cellkey(hash_t id, hash_t k)
+{
+   return phamt_minleaf(id) | k;
+}
 
 
 //------------------------------------------------------------------------------
@@ -102,7 +511,15 @@ PHAMT_t phamt_from_kv(hash_t k, void* v, uint8_t flag_pyobject);
 // NULL is returned.
 // This function does not deal at all with INCREF or DECREF, so before returning
 // anything returned from this function back to Python, be sure to INCREF it.
-void* phamt_lookup(PHAMT_t node, hash_t k);
+// If the pointer found is provided, then it is set to 1 if the key k was found
+// and 0 if it was not; this allows for disambiguation when NULL is a valid
+// value (for a ctype PHAMT).
+void* phamt_lookup(PHAMT_t node, hash_t k, int* found);
+// phamt_find(node, k, path)
+// Finds and returns the value associated with the given key k in the given
+// node. Update the given path-object in order to indicate where in the node
+// the key lies.
+void* phamt_find(PHAMT_t node, hash_t k, PHAMTPath_t* path);
 // phamt_assoc(node, k, v)
 // Yields a copy of the given PHAMT with the new key associated. All return
 // values and touches objects should be correctly reference-tracked, and this
@@ -113,18 +530,28 @@ PHAMT_t phamt_assoc(PHAMT_t node, hash_t k, void* v);
 // values and touches objects should be correctly reference-tracked, and this
 // function's return-value has been reference-incremented for the caller.
 PHAMT_t phamt_dissoc(PHAMT_t node, hash_t k);
+// phamt_apply(node, h, fn, arg)
+// Applies the given function to the value with the given hash h. The function
+// is called as fn(uint8_t found, void** value, void* arg); it will always be
+// safe to set *value. If found is 0, then the node was not found, and if it is
+// 1 then it was found. If fn returns 0, then the hash should be removed from
+// the PHAMT; if 1 then the value stored in *value should be added or should
+// replace the value mapped to h.
+// The updated PHAMT is returned.
+typedef uint8_t (*phamtfn_t)(uint8_t found, void** value, void* arg);
+PHAMT_t phamt_apply(PHAMT_t node, hash_t k, phamtfn_t fn, void* arg);
 // phamt_first(node, iter)
 // Returns the first item in the phamt node and sets the iterator accordingly.
 // If the depth in the iter is ever set to 0 when this function returns, that
 // means that there are no items to iterate (the return value will also be
 // NULL in this case). No refcounting is performed by this function.
-void* phamt_first(PHAMT_t node, struct PHAMTIter* iter);
+void* phamt_first(PHAMT_t node, PHAMTPath_t* iter);
 // phamt_next(node, iter)
 // Returns the next item in the phamt node and updates the iterator accordingly.
 // If the depth in the iter is ever set to 0 when this function returns, that
 // means that there are no items to iterate (the return value will also be
 // NULL in this case). No refcounting is performed by this function.
-void* phamt_next(PHAMT_t node, struct PHAMTIter* iter);
+void* phamt_next(PHAMT_t node, PHAMTPath_t* iter);
 
 
 #endif // ifndef __phamt_phamt_h_754b8b4b82e87484dd015341f7e9d210
