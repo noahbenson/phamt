@@ -78,20 +78,45 @@ typedef struct {
    PHAMTIndex_t index; // The cell-index that this location refers to.
 } PHAMTLoc_t;
 typedef struct {
-   // PHAMT_LEVELS is guaranteed to be enough space for any search.
+   // PHAMT_LEVELS is guaranteed to be enough space for any search; however
+   // we need to store some information about the original query and/or the
+   // starting point, so we actually allocate PHAMT_LEVELS+1; (the final level
+   // is just stored in the variable start).
    // The steps along the path include both a node and an index each; in the
-   // indices, however, we don't actually need the is_beneath and is_found
-   // values at every level--instead we just need them once for the entire
-   // search that is being performd. Accordingly, we appropriate these
-   // values:
-   //  - steps[0].is_found stores the results of the overall search for a given
-   //    key (i.e., is it found in the node at all).
-   //  - steps[0].is_beneath stores the depth of the final node in the path. In
-   //    the case that this is 0xff, that means that the key is not beneath the
-   //    the requested node at all.
-   //  - steps[k].is_beneath for k > 0 is equal to the depth of the previous
-   //    node in the path; if there is no previus node, then the value is 0xff.
+   // indices, however, we slightly re-interpret the meaning of a few members,
+   // particularly is_beneath:
+   //  - steps[d].node is the node at depth d on the search (if there is no
+   //    depth d, then the values at steps[d] are all undefined).
+   //  - steps[d].index.is_found is either 0 or 1. If the subindex was found
+   //    at this depth (i.e., the requested element is beneath the node at depth
+   //    d), then is_found is 1; if the subindex is not beneath this node at
+   //    all, then is_found is 0; otherwise, if the requested element is beneath
+   //    the node at depth d but is not found in it, then is_found is 0, but the
+   //    edit_depth of the overall path will not be equal to the min_depth (see
+   //    below).
+   //  - steps[d].index.is_beneath is the depth one level up from the depth d
+   //    in the original node/tree.
+   //  - If steps[d].index.is_beneath is greater than PHAMT_TWIG_DEPTH (0xff),
+   //    then the node is the root of the tree.
    PHAMTLoc_t steps[PHAMT_LEVELS];
+   // The additional data stores some info about the search:
+   //  - min_depth is the depth if the *first* node on the path (i.e., the node
+   //    in which the search was initiated).
+   //  - max_depth is the depth of the *final* node on the path. The requested
+   //    node may not be beneath this node if edit_depth is not equal to
+   //    min_depth.
+   //  - edit_depth is the depth at which the first edit to the path should be
+   //    made if the intention is to add the node to the path. This is always
+   //    equal to min_depth except in the case that the value being searched for
+   //    is disjoint from the node at the min_depth, indicating that the search
+   //    reached a depth at which the value was not beneath the subnode.
+   //  - value_found is 1 if the element requested (when the path was created)
+   //    was found in the original node and 0 if the requested element was not
+   //    found.
+   uint8_t min_depth;
+   uint8_t max_depth;
+   uint8_t edit_depth;
+   uint8_t value_found;
 } PHAMTPath_t;
 // PHAMTIndex_t, PHAMTLoc_t and PHAMTPath_t are not pointers, since they should
 // usually be allocated on the stack.

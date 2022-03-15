@@ -34,10 +34,28 @@
      dbgmsg("%s ci={found=%u, beneath=%u, cell=%u, bit=%u}\n",    \
             (prefix), (ci).is_found, (ci).is_beneath,             \
             (ci).cellindex, (ci).bitindex)
+   static inline void dbgpath(const char* prefix, PHAMTPath_t* path)
+   {
+      char buf[1024];
+      uint8_t d = path->max_depth;
+      PHAMTLoc_t* loc = &path->steps[d];
+      PHAMT_t node = path->steps[path->min_depth].node;
+      fprintf(stderr, "%s path [%u, %u, %u, %u]\n", prefix,
+              (unsigned)path->min_depth, (unsigned)path->edit_depth,
+              (unsigned)path->max_depth, (unsigned)path->value_found);
+      do {
+         loc = path->steps + d;
+         sprintf(buf, "%s path     %2u:", prefix, (unsigned)d);
+         dbgnode(buf, loc->node);
+         dbgci(buf, loc->index);
+         d = loc->index.is_beneath;
+      } while (loc->node != node);
+   }
 #else
 #  define dbgmsg(...)
 #  define dbgnode(prefix, u)
 #  define dbgci(prefix, ci)
+#  define dbgpath(prefix, path)
 #endif
 
 
@@ -68,7 +86,7 @@ static PyObject* phamt_py_from_list(PyObject* self, PyObject *const *args, Py_ss
 // This function does not update the references of either node, so this must be
 // accounted for by the caller (in other words, the returned node takes the
 // references PHAMTs to it). The return value has a refcount of 1.
-inline PHAMT_t phamt_join_disjoint(PHAMT_t a, PHAMT_t b)
+static inline PHAMT_t phamt_join_disjoint(PHAMT_t a, PHAMT_t b)
 {
    PHAMT_t u;
    uint8_t bit0, shift, newdepth;
@@ -114,7 +132,7 @@ inline PHAMT_t phamt_join_disjoint(PHAMT_t a, PHAMT_t b)
    // That's all.
    return u;
 }
-inline void* _phamt_lookup(PHAMT_t node, hash_t k, int* found)
+static inline void* _phamt_lookup(PHAMT_t node, hash_t k, int* found)
 {
    PHAMTIndex_t ci;
    uint8_t depth;
@@ -140,23 +158,22 @@ void* phamt_lookup(PHAMT_t node, hash_t k, int* found)
 {
    return _phamt_lookup(node, k, found);
 }
-void* _phamt_find(PHAMT_t node, hash_t k, PHAMTPath_t* path)
+static inline void* _phamt_find(PHAMT_t node, hash_t k, PHAMTPath_t* path)
 {
    PHAMTLoc_t* loc;
    uint8_t depth, updepth = 0xff;
-   path->steps[0].node = node;
+   path->min_depth = node->addr_depth;
    do {
       depth = node->addr_depth;
       loc = path->steps + depth;
       loc->node = node;
       loc->index = phamt_cellindex(node, k);
       if (!loc->index.is_found) {
-         path->steps[0].index.is_found = 0;
-         if (loc->index.is_beneath) {
-            path->steps[0].index.is_beneath = depth;
-            loc->index.is_beneath = updepth;
-         } else
-            path->steps[0].index.is_beneath = updepth;
+         path->max_depth = depth;
+         path->edit_depth = (loc->index.is_beneath ? depth : updepth);
+         path->value_found = 0;
+         loc->index.is_found = 0;
+         loc->index.is_beneath = updepth;
          return NULL;
       }
       loc->index.is_beneath = updepth;
@@ -164,95 +181,120 @@ void* _phamt_find(PHAMT_t node, hash_t k, PHAMTPath_t* path)
       node = (PHAMT_t)node->cells[loc->index.cellindex];
    } while (depth != PHAMT_TWIG_DEPTH);
    // If we reach this point, node is the correct/found value.
-   path->steps[0].index.is_beneath = PHAMT_TWIG_DEPTH;
-   path->steps[0].index.is_found = 1;
+   path->max_depth = PHAMT_TWIG_DEPTH;
+   path->edit_depth = PHAMT_TWIG_DEPTH;
+   path->value_found = 1;
    return (void*)node;
 }
 void* phamt_find(PHAMT_t node, hash_t k, PHAMTPath_t* path)
 {
    return _phamt_find(node, k, path);
 }
-inline PHAMT_t _phamt_assoc_path(PHAMTPath_t* path, hash_t k, void* newval)
+static inline PHAMT_t _phamt_assoc_path(PHAMTPath_t* path, hash_t k, void* newval)
 {
-   PHAMT_t u, node = path->steps[0].node;
-   uint8_t dnumel, depth = path->steps[0].index.is_beneath;
+   uint8_t dnumel = 1 - path->value_found, depth = path->max_depth;
    PHAMTLoc_t* loc = path->steps + depth;
+   PHAMT_t u, node = path->steps[path->min_depth].node;
+   dbgmsg("[_phamt_assoc] start: %p\n", (void*)k);
+   dbgpath("[_phamt_assoc]  ", path);
    // The first step in this function is to handle all the quick cases (like
    // assoc'ing to the empty PHAMT) and to get the replacement node for the
    // deepest node in the path (u).
-   if (depth == PHAMT_TWIG_DEPTH) {
-      if (path->steps[0].index.is_found) {
-         // We'e potentially replacing a leaf. Check that there's reason to.
-         void* curval = loc->node->cells[loc->index.cellindex];
-         if (curval == newval) {
-            Py_INCREF(node);
-            return node;
-         }
-         // Go ahead and alloc a copy (this increases the refcount for
-         // everything, so we need to deref the old child.
-         u = phamt_copy_chgcell(loc->node, loc->index, newval);
-         dnumel = 0;
-      } else {
-         // We're adding a new leaf. This updates refcounts for everything
-         // except the replaced cell.
-         u = phamt_copy_addcell(loc->node, loc->index, newval);
-         u->numel = node->numel + 1;
-         dnumel = 1;
+   if (path->value_found) {
+      // We'e replacing a leaf. Check that there's reason to.
+      void* curval = loc->node->cells[loc->index.cellindex];
+      if (curval == newval) {
+         Py_INCREF(node);
+         return node;
       }
-   } else {
-      // We are either adding a new twig to a leaf or joining a twig with a node
-      // via a new higher-up node; either way we need a twig.
+      // Go ahead and alloc a copy.
+      u = phamt_copy_chgcell(loc->node, loc->index, newval);
+      PyObject_GC_Track((PyObject*)u);
+   } else if (depth != path->edit_depth) {
+      // The key isn't beneath the deepest node; we need to join a new twig
+      // with the disjoint deep node.
       u = phamt_from_kv(k, newval, node->flag_pyobject);
-      if (node->numel == 0) {
-         // Actually, this twig is the whole new PHAMT.
-         return u;
-      } else if (depth > PHAMT_TWIG_DEPTH) {
-         // The key isn't beneath this node, so we need to make a higher up node
-         // that links to both the key and node.
-         Py_INCREF(node); // The new parent node gets this ref.
-         return phamt_join_disjoint(node, u);
-      } else {
-         // The key is beneath this node, so we insert u into it. 
-         u = phamt_copy_addcell(loc->node, loc->index, u);
-         dnumel = 1;
-      }
+      Py_INCREF(loc->node); // The new parent node gets this ref.
+      u = phamt_join_disjoint(loc->node, u);
+   } else if (depth == PHAMT_TWIG_DEPTH) {
+      // We're adding a new leaf. This updates refcounts for everything
+      // except the replaced cell (correctly).
+      u = phamt_copy_addcell(loc->node, loc->index, newval);
+      ++(u->numel);
+      PyObject_GC_Track((PyObject*)u);
+   } else if (node->numel == 0) {
+      // We are assoc'ing to the empty node, so just return a new key-val twig.
+      return phamt_from_kv(k, newval, node->flag_pyobject);
+   } else {
+      // We are adding a new twig to an internal node.
+      node = phamt_from_kv(k, newval, node->flag_pyobject);
+      // The key is beneath this node, so we insert u into it.
+      u = phamt_copy_addcell(loc->node, loc->index, node);
+      Py_DECREF(node);
+      ++(u->numel);
+      PyObject_GC_Track((PyObject*)u);
    }
    // At this point, u is the replacement node for loc->node, which is the
    // deepest node in the path.
-   // We still need to register the new node u with the garbage collector.
-   PyObject_GC_Track((PyObject*)u);
    // We now step up through the path, rebuilding the nodes.
-   while (loc->node != node) {
-      loc = path->steps + loc->index.is_beneath;
+   while (depth != path->min_depth) {
+      depth = loc->index.is_beneath;
+      loc = path->steps + depth;
+      node = u;
       u = phamt_copy_chgcell(loc->node, loc->index, u);
+      Py_DECREF(node);
       u->numel += dnumel;
       PyObject_GC_Track((PyObject*)u);
    }
    // At the end of this loop, u is the replacement node, and should be ready.
    return u;
 }
-inline PHAMT_t _phamt_dissoc_path(PHAMTPath_t* path)
+static inline PHAMT_t _phamt_dissoc_path(PHAMTPath_t* path)
 {
-   PHAMT_t u, node = path->steps[0].node;
-   uint8_t depth = path->steps[0].index.is_beneath;
-   PHAMTLoc_t* loc = path->steps + depth;
-   if (depth != PHAMT_TWIG_DEPTH || !path->steps[0].index.is_found) {
+   PHAMTLoc_t* loc;
+   PHAMT_t u, node = path->steps[path->min_depth].node;
+   uint8_t depth = path->max_depth;
+   dbgpath("[_phamt_dissoc]", path);
+   if (!path->value_found) {
       // The item isn't there; just return the node unaltered.
       Py_INCREF(node);
       return node;
    }
-   // Go ahead and alloc a copy (this increases the refcount for
-   // everything, so we need to deref the old child.
-   u = phamt_copy_delcell(loc->node, loc->index);
-   --(u->numel);
+   loc = path->steps + depth;
+   if (loc->node->numel == 1) {
+      // We need to just remove this node; however, we know that the parent node
+      // won't need this same treatment because only twig nodes can have exactly
+      // 1 child--otherwise the node gets simplified.
+      if (path->min_depth == depth)
+         return phamt_empty_like(loc->node);
+      depth = loc->index.is_beneath;
+      loc = path->steps + depth;
+      // Now, we want to delcell at loc, but if loc has n=2, then we instead
+      // just want to pass up the other twig.
+      if (phamt_cellcount(loc->node) == 2) {
+         u = loc->node->cells[loc->index.cellindex ? 0 : 1];
+         Py_INCREF(u);
+         if (depth == path->min_depth)
+            return u;
+      } else  {
+         u = phamt_copy_delcell(loc->node, loc->index);
+         --(u->numel);
+         PyObject_GC_Track((PyObject*)u);
+      }
+   } else {
+      u = phamt_copy_delcell(loc->node, loc->index);
+      --(u->numel);
+      PyObject_GC_Track((PyObject*)u);
+   }
    // At this point, u is the replacement node for loc->node, which is the
    // deepest node in the path.
-   // We still need to register the new node u with the garbage collector.
-   PyObject_GC_Track((PyObject*)u);
    // We now step up through the path, rebuilding the nodes.
-   while (loc->node != node) {
-      loc = path->steps + loc->index.is_beneath;
+   while (depth > path->min_depth) {
+      depth = loc->index.is_beneath;
+      loc = path->steps + depth;
+      node = u;
       u = phamt_copy_chgcell(loc->node, loc->index, u);
+      Py_DECREF(node);
       --(u->numel);
       PyObject_GC_Track((PyObject*)u);
    }
@@ -301,7 +343,7 @@ PHAMT_t phamt_apply(PHAMT_t node, hash_t k, phamtfn_t fn, void* arg)
    uint8_t rval;
    PHAMTPath_t path;
    void* val = phamt_find(node, k, &path);
-   rval = (*fn)(path.steps[0].index.is_found, &val, arg);
+   rval = (*fn)(path.value_found, &val, arg);
    if (rval) return _phamt_assoc_path(&path, k, val);
    else      return _phamt_dissoc_path(&path);
 }
@@ -572,8 +614,9 @@ PyMODINIT_FUNC PyInit_core(void)
    }
    // Debugging things that are useful to print.
    dbgmsg("Initialized PHAMT C API.\n"
-          "    PHAMT_SIZE: %u\n",
-          (unsigned)PHAMT_SIZE);
+          "    PHAMT_SIZE:      %u\n"
+          "    PHAMTPath SIZE: %u\n",
+          (unsigned)PHAMT_SIZE, (unsigned)sizeof(PHAMTPath_t));
    // Return the module!
    return m;
 }
@@ -739,7 +782,7 @@ static PyObject* phamt_py_from_list(PyObject* self, PyObject *const *args, Py_ss
 {
    return NULL; // #TODO
 }
-inline void* _phamt_digfirst(PHAMT_t node, PHAMTPath_t* path)
+static inline void* _phamt_digfirst(PHAMT_t node, PHAMTPath_t* path)
 {
    PHAMTLoc_t* loc;
    uint8_t last_depth = path->steps[node->addr_depth].index.is_beneath;
@@ -754,19 +797,23 @@ inline void* _phamt_digfirst(PHAMT_t node, PHAMTPath_t* path)
       last_depth = node->addr_depth;
       node = (PHAMT_t)node->cells[0];
    } while (last_depth < PHAMT_TWIG_DEPTH);
-   path->steps[0].index.is_found = 1;
-   path->steps[0].index.is_beneath = PHAMT_TWIG_DEPTH;
+   path->value_found = 1;
+   path->max_depth = PHAMT_TWIG_DEPTH;
+   path->edit_depth = PHAMT_TWIG_DEPTH;
    return node;
 }
 void* phamt_first(PHAMT_t node, PHAMTPath_t* path)
 {
+   path->min_depth = node->addr_depth;
    // Check that this node isn't empty.
    if (node->numel == 0) {
-      path->steps[0].index.is_found = 0;
-      path->steps[0].index.is_beneath = 0xff;
+      path->value_found = 0;
+      path->max_depth = 0;
+      path->edit_depth = 0;
       return NULL;
    }
-   // Otherwise, digifrst will take care of things.
+   // Otherwise, digfirst will take care of things.
+   path->steps[node->addr_depth].index.is_beneath = 0xff;
    return _phamt_digfirst(node, path);
 }
 void* phamt_next(PHAMT_t node0, PHAMTPath_t* path)
@@ -774,15 +821,11 @@ void* phamt_next(PHAMT_t node0, PHAMTPath_t* path)
    PHAMT_t node;
    uint8_t d, ci;
    bits_t mask;
-   PHAMTLoc_t* loc = path->steps;
-   if (!loc->index.is_found || loc->index.is_beneath > PHAMT_TWIG_DEPTH) {
-      loc->index.is_found = 0;
-      return NULL;
-   }
-   // We should always start at twig depth, but we can start at whatever depth
-   // the path gives us, in case someone has a path pointint to the middle of a
-   // phamt somewhere.
-   d = path->steps[0].index.is_beneath;
+   PHAMTLoc_t* loc;
+   // We should always return from twig depth, but we can start at whatever
+   // depth the path gives us, in case someone has a path pointing to the middle
+   // of a phamt somewhere.
+   d = path->min_depth;
    do {
       loc = path->steps + d;
       ci = loc->index.cellindex + 1;
@@ -803,8 +846,10 @@ void* phamt_next(PHAMT_t node0, PHAMTPath_t* path)
       }
    } while (d <= PHAMT_TWIG_DEPTH);
    // If we reach this point, we didn't find anything.
-   path->steps[0].index.is_found = 0;
-   path->steps[0].index.is_beneath = 0xff;
+   path->value_found = 0;
+   path->max_depth = 0;
+   path->edit_depth = 0;
+   path->min_depth = 0;
    return NULL;
 }
 

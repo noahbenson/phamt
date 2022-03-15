@@ -13,7 +13,12 @@ setup(
     url='https://github.com/noahbenson/phamt/',
     license='MIT',
     packages=['phamt', 'phamt.test'],
-    ext_modules=[Extension('phamt.core', ['phamt/phamt.c'], depends=['phamt/phamt.h'])],
+    ext_modules=[
+        Extension('phamt.core',
+                  ['phamt/phamt.c'],
+                  depends=['phamt/phamt.h'],
+                  include_dirs=["phamt"],
+                  extra_compile_args=["-O3"])],
     package_data={'': ['LICENSE.txt']},
     include_package_data=True,
     install_requires=[])

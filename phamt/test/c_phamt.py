@@ -45,7 +45,7 @@ class TestPHAMT(TestCase):
                 u = u.dissoc(k)
                 del d[k]
             # At every step, these must be equal.
-            self.assertTrue(len(d) == len(u))
+            self.assertEqual(len(d), len(u))
             for (k,v) in d.items():
                 if k not in u: print(k)
                 self.assertTrue(k in u)
@@ -104,8 +104,8 @@ class TestPHAMT(TestCase):
         n = 100000
         for k in range(n):
             p = p.assoc(k, str(k))
-        # Make sure the length is correct and it contains it's items.
-        self.assertTrue(len(p) == n)
+        # Make sure the length is correct and it contains its items.
+        self.assertEqual(len(p), n)
         for k in range(n):
             self.assertTrue(k in p)
             self.assertTrue(p[k] == str(k))
@@ -118,7 +118,7 @@ class TestPHAMT(TestCase):
         # #TODO: test iteration
     def test_gc(self):
         """Tests that PHAMT objects are garbage collectable and allow their
-        values to be garbag collected.
+        values to be garbage collected.
         """
         import gc
         from weakref import ref
@@ -136,5 +136,5 @@ class TestPHAMT(TestCase):
         del u
         gc.collect()
         for r in assocs:
-            self.assertTrue(r() is None)
+            self.assertEqual(r(), None)
 
