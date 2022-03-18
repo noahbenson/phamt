@@ -27,7 +27,7 @@ extern "C" {
 // regarding the size of integers and the functions/macros that handle them.
 
 //------------------------------------------------------------------------------
-// The docstring:
+// The docstrings:
 #define PHAMT_DOCSTRING (                                                      \
    "A Persistent Hash Array Mapped Trie (PHAMT) type.\n"                       \
    "\n"                                                                        \
@@ -49,6 +49,32 @@ extern "C" {
    "   an empty `PHAMT`;\n"                                                    \
    " * by supplying the `PHAMT.from_list(iter_of_values)` with a list of\n"    \
    "   values, which are assigned the keys `0`, `1`, `2`, etc.\n"              )
+#define PHAMT_ASSOC_DOCSTRING (                                                \
+   "Returns a new `PHAMT` object with an additional association.\n"            \
+   "\n"                                                                        \
+   "`phamt_obj.assoc(key, value)` returns a new `PHAMT` object that is equal\n"\
+   "to `phamt_obj` with the modification that in the new object, `key` is\n"   \
+   "mapped to `value`. This is copy done efficiently using shared state, so\n" \
+   "that the time to perform this update is `O(log n)` and the additional\n"   \
+   "space required to keep both the original and the new object in memory is\n"\
+   "also `O(log n)`.\n")
+#define PHAMT_DISSOC_DOCSTRING (                                               \
+   "Returns a new `PHAMT` object with an additional association.\n"            \
+   "\n"                                                                        \
+   "`phamt_obj.assoc(key, value)` returns a new `PHAMT` object that is equal\n"\
+   "to `phamt_obj` with the modification that in the new object, `key` is\n"   \
+   "mapped to `value`. This is copy done efficiently using shared state, so\n" \
+   "that the time to perform this update is `O(log n)` and the additional\n"   \
+   "space required to keep both the original and the new object in memory is\n"\
+   "also `O(log n)`.\n")
+#define PHAMT_FROM_LIST_DOCSTRING (                                            \
+   "Constructs a PHAMT object from a sequence or iterable of values.\n"        \
+   "\n"                                                                        \
+   "`PHAMT.from_list(items)` returns a `PHAMT` object whose keys are the\n"    \
+   "integers `0, 1 ... len(items)` and whose values are the elements of the\n" \
+   "iterable `items` in iteration order. This is performed with minimal\n"     \
+   "allocations, so it should be more efficient than building the PHAMT from\n"\
+   "scratch.\n")
 
 //------------------------------------------------------------------------------
 // hash_t and bits_t
@@ -1416,7 +1442,7 @@ static inline void* _phamt_digfirst(PHAMT_t node, PHAMT_path_t* path)
       loc->index = phamt_firstcell(node);
       loc->index.is_beneath = last_depth;
       last_depth = node->addr_depth;
-      node = (PHAMT_t)node->cells[0];
+      node = (PHAMT_t)node->cells[loc->index.cellindex];
    } while (last_depth < PHAMT_TWIG_DEPTH);
    path->value_found = 1;
    path->max_depth = PHAMT_TWIG_DEPTH;
@@ -1687,43 +1713,49 @@ static inline PHAMT_t thamt_apply(PHAMT_t node, hash_t k,
 // This does not change the refcount of node.
 static inline PHAMT_t thamt_persist(PHAMT_t node)
 {
-   uint8_t ci, d = node->addr_depth;
+   uint8_t d = node->addr_depth;
    PHAMT_t u;
    PHAMT_path_t path;
-   if (!node->flag_transient) return node;
+   PHAMT_loc_t* loc;
    if (node->numel == 0) return phamt_empty_like(node);
+   // We're going to return node at the end, so go ahead and incref it.
+   Py_INCREF(node);
+   if (!node->flag_transient) return node;
    // Note the starting depth and start position in general.
    path.min_depth = node->addr_depth;
-   path.steps[d].index.is_beneath = 0xff;
-   path.steps[d].node = node;
+   loc = path.steps + d;
+   loc->index.is_beneath = 0xff;
+   loc->node = node;
    // Now, iterate, starting here.
    while (1) {
       // Upon starting this loop, we are encountering the node at the given
       // depth for the first time.
-      while (u->flag_transient) {
+      while (loc->node->flag_transient) {
          // Unset the transient bit.
-         u->flag_transient = 0;
+         loc->node->flag_transient = 0;
          // Unless we're a twig node, we need to recurse on our children.
          if (d >= PHAMT_TWIG_DEPTH) break;
          // We need to recurse on this node's children; add this node to the
          // stack (path).
-         path.steps[d].index.cellindex = 0;
-         u = u->cells[0];
-         path.steps[u->addr_depth].index.is_beneath = d;
+         loc->index = phamt_firstcell(loc->node);
+         u = loc->node->cells[loc->index.cellindex];
+         loc = path.steps + u->addr_depth;
+         loc->index.is_beneath = d;
          d = u->addr_depth;
       }
       // If we reach this point, then u is either not transient, or it was a
       // twig that has now been made non-transient. Either way, we need to
       // pop up the stack (path) to find the next node in our search.
       do {
-         d = path.steps[d].index.is_beneath;
+         d = loc->index.is_beneath;
          if (d > PHAMT_TWIG_DEPTH) return node;
          // Check the next node at this depth.
-         u = path.steps[d].node;
-         ci = ++path.steps[d].index.cellindex;
-      } while (ci >= phamt_cellcount(u));
-      u = u->cells[ci];
-      path.steps[u->addr_depth].index.is_beneath = d;
+         loc = path.steps + d;
+         loc->index = phamt_nextcell(loc->node, loc->index);
+      } while (loc->index.is_found);
+      u = u->cells[loc->index.cellindex];
+      loc = path.steps + u->addr_depth;
+      loc->index.is_beneath = d;
       d = u->addr_depth;
    }
    return node;

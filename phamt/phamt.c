@@ -3,6 +3,9 @@
 // Implemntation of the core phamt C data structures.
 // by Noah C. Benson
 
+// This line may be commented out to enable debugging statements in the PHAMT
+// code. These are mostly sprinkled throughout the phamt.h header file in the
+// various inline functions defined there.
 //#define __PHAMT_DEBUG
 
 #include <stdio.h>
@@ -13,29 +16,126 @@
 #include "phamt.h"
 
 
-//------------------------------------------------------------------------------
-// Global Variables and Function Declarations.
+//==============================================================================
+// Function Declarations.
+// This section declares all this file's functions up-font, excepting the module
+// init function, which comes at the very end of the file.
 
+// PHAMT methods
+static PyObject*  py_phamt_assoc(PyObject* self, PyObject* varargs);
+static PyObject*  py_phamt_dissoc(PyObject* self, PyObject* varargs);
+static PyObject*  py_phamt_get(PyObject* self, PyObject* varargs);
+static int        py_phamt_contains(PHAMT_t self, PyObject* key);
+static PyObject*  py_phamt_subscript(PHAMT_t self, PyObject* key);
+static Py_ssize_t py_phamt_len(PHAMT_t self);
+static PyObject*  py_phamt_iter(PHAMT_t self);
+static void       py_phamt_dealloc(PHAMT_t self);
+static int        py_phamt_traverse(PHAMT_t self, visitproc visit, void *arg);
+static PyObject*  py_phamt_repr(PHAMT_t self);
+static PyObject*  py_phamt_new(PyTypeObject *subtype, PyObject *args,
+                               PyObject *kwds);
+// PHAMT type methods (i.e., classmethods)
+static PyObject* py_PHAMT_getitem(PyObject *type, PyObject *item);
+static PyObject* py_PHAMT_from_list(PyObject* self, PyObject *const *args,
+                                    Py_ssize_t nargs);
+// Module-level functions
+static void py_phamtmod_free(void* mod);
+
+
+//==============================================================================
+// Static Variables
+// This section defines all the variables that are local to this file (and thus
+// to the phamt.core module's scope, in effect). These are mostly used or
+// initialized in the PyCore_Init() function below.
+
+//------------------------------------------------------------------------------
+// The Empty PHAMTs
+
+// The empty (Python object) PHAMT.
 static PHAMT_t PHAMT_EMPTY = NULL;
+// The empty (C type) PHAMT.
 static PHAMT_t PHAMT_EMPTY_CTYPE = NULL;
-#define RETURN_EMPTY         \
-   ({Py_INCREF(PHAMT_EMPTY); \
-     return PHAMT_EMPTY;})
-#define RETURN_EMPTY_CTYPE         \
-   ({Py_INCREF(PHAMT_EMPTY_CTYPE); \
-     return PHAMT_EMPTY_CTYPE;})
-
-// Additional constructors that are part of the Python interface.
-static PyObject* phamt_py_from_list(PyObject* self, PyObject *const *args, Py_ssize_t nargs);
-
 
 //------------------------------------------------------------------------------
-// Python Type and Module Code
-// This section contains all the code necessary to setup the Python PHAMT type
-// and register the module with Python.
-// Many of the functions below are just wrappers around the functions above.
+// Python Data Structures
+// These values represent data structures that define the Python-C interface for
+// the phamt.core module.
 
-static PyObject* phamt_py_assoc(PyObject* self, PyObject* varargs)
+// The PHAMT class methods.
+static PyMethodDef PHAMT_methods[] = {
+   {"get",               (PyCFunction)py_phamt_get, METH_VARARGS, NULL},
+   {"__class_getitem__", (PyCFunction)py_PHAMT_getitem, METH_O|METH_CLASS, NULL},
+   {"assoc",             (PyCFunction)py_phamt_assoc, METH_VARARGS,
+                         PyDoc_STR(PHAMT_ASSOC_DOCSTRING)},
+   {"dissoc",            (PyCFunction)py_phamt_dissoc, METH_VARARGS,
+                         PyDoc_STR(PHAMT_DISSOC_DOCSTRING)},
+   {"from_list",         (PyCFunction)py_PHAMT_from_list, METH_FASTCALL,
+                         PyDoc_STR(PHAMT_FROM_LIST_DOCSTRING)},
+   {NULL, NULL, 0, NULL}
+};
+// The PHAMT implementation of the sequence interface.
+static PySequenceMethods PHAMT_as_sequence = {
+   0,                             // sq_length
+   0,                             // sq_concat
+   0,                             // sq_repeat
+   0,                             // sq_item
+   0,                             // sq_slice
+   0,                             // sq_ass_item
+   0,                             // sq_ass_slice
+   (objobjproc)py_phamt_contains, // sq_contains
+   0,                             // sq_inplace_concat
+   0,                             // sq_inplace_repeat
+};
+// The PHAMT implementation of the Mapping interface.
+static PyMappingMethods PHAMT_as_mapping = {
+   (lenfunc)py_phamt_len,          // mp_length
+   (binaryfunc)py_phamt_subscript, // mp_subscript
+   NULL
+};
+// The PHAMT Type object data.
+static PyTypeObject PHAMT_type = {
+   PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   "phamt.core.PHAMT",
+   .tp_doc = PyDoc_STR(PHAMT_DOCSTRING),
+   .tp_basicsize = PHAMT_SIZE,
+   .tp_itemsize = sizeof(void*),
+   .tp_methods = PHAMT_methods,
+   .tp_as_mapping = &PHAMT_as_mapping,
+   .tp_as_sequence = &PHAMT_as_sequence,
+   .tp_iter = (getiterfunc)py_phamt_iter,
+   .tp_dealloc = (destructor)py_phamt_dealloc,
+   .tp_getattro = PyObject_GenericGetAttr,
+   .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+   .tp_traverse = (traverseproc)py_phamt_traverse,
+   // PHAMTs, like tuples, can't make ref links because they are 100% immutable.
+   //.tp_clear = (inquiry)py_phamt_clear,
+   .tp_new = py_phamt_new,
+   .tp_repr = (reprfunc)py_phamt_repr,
+   .tp_str = (reprfunc)py_phamt_repr,
+};
+// The phamt.core module data.
+static struct PyModuleDef phamt_pymodule = {
+   PyModuleDef_HEAD_INIT,
+   "core",
+   NULL,
+   -1,
+   NULL,
+   NULL,
+   NULL,
+   NULL,
+   py_phamtmod_free
+};
+
+
+//==============================================================================
+// Python-C Interface Code 
+// This section contains the implementatin of the PHAMT methods and the PHAMT
+// type functions for the Python-C interface.
+
+//------------------------------------------------------------------------------
+// PHAMT methods
+
+static PyObject* py_phamt_assoc(PyObject* self, PyObject* varargs)
 {
    hash_t h;
    PyObject* key, *val;
@@ -48,7 +148,7 @@ static PyObject* phamt_py_assoc(PyObject* self, PyObject* varargs)
    h = (hash_t)PyLong_AsSsize_t(key);
    return (PyObject*)phamt_assoc((PHAMT_t)self, h, val);
 }
-static PyObject* phamt_py_dissoc(PyObject* self, PyObject* varargs)
+static PyObject* py_phamt_dissoc(PyObject* self, PyObject* varargs)
 {
    hash_t h;
    PyObject* key;
@@ -61,7 +161,7 @@ static PyObject* phamt_py_dissoc(PyObject* self, PyObject* varargs)
    h = (hash_t)PyLong_AsSsize_t(key);
    return (PyObject*)phamt_dissoc((PHAMT_t)self, h);
 }
-static PyObject* phamt_py_get(PyObject* self, PyObject* varargs)
+static PyObject* py_phamt_get(PyObject* self, PyObject* varargs)
 {
    hash_t h;
    int found;
@@ -94,12 +194,7 @@ static PyObject* phamt_py_get(PyObject* self, PyObject* varargs)
       Py_RETURN_NONE;
    }
 }
-static PyObject *PHAMT_py_getitem(PyObject *type, PyObject *item)
-{
-   Py_INCREF(type);
-   return type;
-}
-static int phamt_tp_contains(PHAMT_t self, PyObject* key)
+static int py_phamt_contains(PHAMT_t self, PyObject* key)
 {
    hash_t h;
    int found;
@@ -108,7 +203,7 @@ static int phamt_tp_contains(PHAMT_t self, PyObject* key)
    key = phamt_lookup(self, h, &found);
    return found;
 }
-static PyObject* phamt_tp_subscript(PHAMT_t self, PyObject* key)
+static PyObject* py_phamt_subscript(PHAMT_t self, PyObject* key)
 {
    PyObject* val;
    int found;
@@ -127,15 +222,15 @@ static PyObject* phamt_tp_subscript(PHAMT_t self, PyObject* key)
       PyErr_SetObject(PyExc_KeyError, key);
    return (PyObject*)val;
 }
-static Py_ssize_t phamt_tp_len(PHAMT_t self)
+static Py_ssize_t py_phamt_len(PHAMT_t self)
 {
    return (Py_ssize_t)self->numel;
 }
-static PyObject *phamt_tp_iter(PHAMT_t self)
+static PyObject *py_phamt_iter(PHAMT_t self)
 {
    return NULL; // #TODO
 }
-static void phamt_tp_dealloc(PHAMT_t self)
+static void py_phamt_dealloc(PHAMT_t self)
 {
    PyTypeObject* tp;
    PyObject* tmp;
@@ -163,7 +258,7 @@ static void phamt_tp_dealloc(PHAMT_t self)
    }
    tp->tp_free(self);
 }
-static int phamt_tp_traverse(PHAMT_t self, visitproc visit, void *arg)
+static int py_phamt_traverse(PHAMT_t self, visitproc visit, void *arg)
 {
    hash_t ii, ncells;
    PyTypeObject* tp;
@@ -184,18 +279,68 @@ static int phamt_tp_traverse(PHAMT_t self, visitproc visit, void *arg)
    }
    return 0;
 }
-static PyObject* phamt_tp_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
+static PyObject* py_phamt_repr(PHAMT_t self)
+{
+   dbgnode("[py_phamt_repr]", self);
+   return PyUnicode_FromFormat("<PHAMT:n=%u>", (unsigned)self->numel);
+}
+static PyObject* py_phamt_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
 {
    // #TODO
    Py_INCREF(PHAMT_EMPTY);
    return (PyObject*)PHAMT_EMPTY;
 }
-static PyObject* phamt_py_repr(PHAMT_t self)
+
+//------------------------------------------------------------------------------
+// PHAMT Constructors
+// These are constructors intended for use in the C-API, not thee Python
+// constructors, which are included above (see py_phamt_new).
+
+// phamt_empty()
+// Returns the empty PHAMT--this is not static because we want it to be
+// available to other C modules. (It is in fact declared in the header file.)
+PHAMT_t phamt_empty(void)
 {
-   dbgnode("[phamt_py_repr]", self);
-   return PyUnicode_FromFormat("<PHAMT:n=%u>", (unsigned)self->numel);
+   Py_INCREF(PHAMT_EMPTY);
+   return PHAMT_EMPTY;
 }
-static void phamt_module_free(void* mod)
+// phamt_empty_ctype()
+// Returns the empty PHAMT whose objects must be C-types.
+PHAMT_t phamt_empty_ctype(void)
+{
+   Py_INCREF(PHAMT_EMPTY_CTYPE);
+   return PHAMT_EMPTY_CTYPE;
+}
+// _phamt_new(ncells)
+// Returns a newly allocated PHAMT object with the given number of cells. The
+// PHAMT has a refcount of 1 but it's PHAMT data are not initialized.
+PHAMT_t _phamt_new(unsigned ncells)
+{
+   return (PHAMT_t)PyObject_GC_NewVar(struct PHAMT, &PHAMT_type, ncells);
+}
+
+//------------------------------------------------------------------------------
+// PHAMT Type Methods
+
+static PyObject *py_PHAMT_getitem(PyObject *type, PyObject *item)
+{
+   Py_INCREF(type);
+   return type;
+}
+// PHAMT.from_list(list)
+// Returns a new PHAMT whose keys are 0, 1, 2... and whose values are the items
+// in the given list in order.
+static PyObject* py_PHAMT_from_list(PyObject* self, PyObject *const *args,
+                                    Py_ssize_t nargs)
+{
+   return NULL; // #TODO
+}
+
+//------------------------------------------------------------------------------
+// Functions for the phamt.core Module
+
+// Free the module when it is unloaded.
+static void py_phamtmod_free(void* mod)
 {
    PHAMT_t tmp = PHAMT_EMPTY;
    PHAMT_EMPTY = NULL;
@@ -204,65 +349,7 @@ static void phamt_module_free(void* mod)
    PHAMT_EMPTY_CTYPE = NULL;
    Py_DECREF(tmp);
 }
-
-static PyMethodDef PHAMT_methods[] = {
-   {"assoc", (PyCFunction)phamt_py_assoc, METH_VARARGS, NULL},
-   {"dissoc", (PyCFunction)phamt_py_dissoc, METH_VARARGS, NULL},
-   {"get", (PyCFunction)phamt_py_get, METH_VARARGS, NULL},
-   {"__class_getitem__", (PyCFunction)PHAMT_py_getitem, METH_O|METH_CLASS, NULL},
-   {"from_list", (PyCFunction)phamt_py_from_list, METH_FASTCALL,
-    ("Constructs a PHAMT object from a sequence or iterable of values, which"
-     " are assigned the keys 0, 1, 2, etc. in iteration order.")},
-   {NULL, NULL, 0, NULL}
-};
-static PySequenceMethods PHAMT_as_sequence = {
-   0,                             // sq_length
-   0,                             // sq_concat
-   0,                             // sq_repeat
-   0,                             // sq_item
-   0,                             // sq_slice
-   0,                             // sq_ass_item
-   0,                             // sq_ass_slice
-   (objobjproc)phamt_tp_contains, // sq_contains
-   0,                             // sq_inplace_concat
-   0,                             // sq_inplace_repeat
-};
-static PyMappingMethods PHAMT_as_mapping = {
-   (lenfunc)phamt_tp_len,          // mp_length
-   (binaryfunc)phamt_tp_subscript, // mp_subscript
-   NULL
-};
-static PyTypeObject PHAMT_type = {
-   PyVarObject_HEAD_INIT(&PyType_Type, 0)
-   "phamt.core.PHAMT",
-   .tp_doc = PyDoc_STR(PHAMT_DOCSTRING),
-   .tp_basicsize = PHAMT_SIZE,
-   .tp_itemsize = sizeof(void*),
-   .tp_methods = PHAMT_methods,
-   .tp_as_mapping = &PHAMT_as_mapping,
-   .tp_as_sequence = &PHAMT_as_sequence,
-   .tp_iter = (getiterfunc)phamt_tp_iter,
-   .tp_dealloc = (destructor)phamt_tp_dealloc,
-   .tp_getattro = PyObject_GenericGetAttr,
-   .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
-   .tp_traverse = (traverseproc)phamt_tp_traverse,
-   // PHAMTs, like tuples, can't make ref links because they are 100% immutable.
-   //.tp_clear = (inquiry)phamt_tp_clear,
-   .tp_new = phamt_tp_new,
-   .tp_repr = (reprfunc)phamt_py_repr,
-   .tp_str = (reprfunc)phamt_py_repr,
-};
-static struct PyModuleDef phamt_pymodule = {
-   PyModuleDef_HEAD_INIT,
-   "core",
-   NULL,
-   -1,
-   NULL,
-   NULL,
-   NULL,
-   NULL,
-   phamt_module_free
-};
+// The moodule's initialization function.
 PyMODINIT_FUNC PyInit_core(void)
 {
    PyObject* m = PyModule_Create(&phamt_pymodule);
@@ -307,33 +394,9 @@ PyMODINIT_FUNC PyInit_core(void)
    }
    // Debugging things that are useful to print.
    dbgmsg("Initialized PHAMT C API.\n"
-          "    PHAMT_SIZE:      %u\n"
-          "    PHAMTPath SIZE: %u\n",
+          "    PHAMT size:      %u\n"
+          "    PHAMT path SIZE: %u\n",
           (unsigned)PHAMT_SIZE, (unsigned)sizeof(PHAMT_path_t));
    // Return the module!
    return m;
 }
-
-
-//------------------------------------------------------------------------------
-// Constructors
-// All of the constructors in this section make an attemt to correctly handle
-// the ref-counting associated with copying nodes. Please be careful with this!
-
-PHAMT_t phamt_empty(void)
-{
-   RETURN_EMPTY;
-}
-PHAMT_t phamt_empty_ctype(void)
-{
-   RETURN_EMPTY_CTYPE;
-}
-PHAMT_t _phamt_new(unsigned ncells)
-{
-   return (PHAMT_t)PyObject_GC_NewVar(struct PHAMT, &PHAMT_type, ncells);
-}
-static PyObject* phamt_py_from_list(PyObject* self, PyObject *const *args, Py_ssize_t nargs)
-{
-   return NULL; // #TODO
-}
-
