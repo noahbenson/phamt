@@ -30,14 +30,6 @@ static PyObject* phamt_py_from_list(PyObject* self, PyObject *const *args, Py_ss
 
 
 //------------------------------------------------------------------------------
-// Public API Functions and their inline support functions.
-
-PHAMT_t thamt_assoc(PHAMT_t node, hash_t k, PyObject* v)
-{
-   return NULL; // #TODO
-}
-
-//------------------------------------------------------------------------------
 // Python Type and Module Code
 // This section contains all the code necessary to setup the Python PHAMT type
 // and register the module with Python.
@@ -149,14 +141,24 @@ static void phamt_tp_dealloc(PHAMT_t self)
    PyObject* tmp;
    bits_t ii, ncells;
    tp = Py_TYPE(self);
-   ncells = phamt_cellcount(self);
    PyObject_GC_UnTrack(self);
    // Walk through the children, dereferencing them
    if (self->addr_depth < PHAMT_TWIG_DEPTH || self->flag_pyobject) {
-      for (ii = 0; ii < ncells; ++ii) {
-         tmp = self->cells[ii];
-         self->cells[ii] = NULL;
-         Py_DECREF(tmp);
+      if (self->flag_full) {
+         // Use ncells as the iteration variable since we won't need it.
+         for (ncells = self->bits; ncells; ncells &= ~(BITS_ONE << ii)) {
+            ii = ctz_bits(ncells);
+            tmp = self->cells[ii];
+            self->cells[ii] = NULL;
+            Py_DECREF(tmp);
+         }
+      } else {
+         ncells = phamt_cellcount(self);
+         for (ii = 0; ii < ncells; ++ii) {
+            tmp = self->cells[ii];
+            self->cells[ii] = NULL;
+            Py_DECREF(tmp);
+         }
       }
    }
    tp->tp_free(self);
@@ -169,9 +171,16 @@ static int phamt_tp_traverse(PHAMT_t self, visitproc visit, void *arg)
    Py_VISIT(tp);
    if (self->addr_depth == PHAMT_TWIG_DEPTH && !self->flag_pyobject)
       return 0;
-   ncells = phamt_cellcount(self);
-   for (ii = 0; ii < ncells; ++ii) {
-      Py_VISIT(((PHAMT_t)self)->cells[ii]);
+   if (self->flag_full) {
+      for (ncells = self->bits; ncells; ncells &= ~(BITS_ONE << ii)) {
+         ii = ctz_bits(ncells);
+         Py_VISIT(((PHAMT_t)self)->cells[ii]);
+      }
+   } else {
+      ncells = phamt_cellcount(self);
+      for (ii = 0; ii < ncells; ++ii) {
+         Py_VISIT(((PHAMT_t)self)->cells[ii]);
+      }
    }
    return 0;
 }
@@ -269,6 +278,7 @@ PyMODINIT_FUNC PyInit_core(void)
    PHAMT_EMPTY->bits = 0;
    PHAMT_EMPTY->flag_transient = 0;
    PHAMT_EMPTY->flag_firstn = 0;
+   PHAMT_EMPTY->flag_full = 0;
    PHAMT_EMPTY->flag_pyobject = 1;
    PHAMT_EMPTY->addr_startbit = HASH_BITCOUNT - PHAMT_ROOT_SHIFT;
    PHAMT_EMPTY->addr_shift = PHAMT_ROOT_SHIFT;
@@ -283,6 +293,7 @@ PyMODINIT_FUNC PyInit_core(void)
    PHAMT_EMPTY_CTYPE->bits = 0;
    PHAMT_EMPTY_CTYPE->flag_transient = 0;
    PHAMT_EMPTY_CTYPE->flag_firstn = 0;
+   PHAMT_EMPTY_CTYPE->flag_full = 0;
    PHAMT_EMPTY_CTYPE->flag_pyobject = 0;
    PHAMT_EMPTY_CTYPE->addr_startbit = HASH_BITCOUNT - PHAMT_ROOT_SHIFT;
    PHAMT_EMPTY_CTYPE->addr_shift = PHAMT_ROOT_SHIFT;
