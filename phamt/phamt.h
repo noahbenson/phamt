@@ -1413,10 +1413,8 @@ static inline void* _phamt_digfirst(PHAMT_t node, PHAMT_path_t* path)
    do {
       loc = path->steps + node->addr_depth;
       loc->node = node;
-      loc->index.cellindex = 0;
-      loc->index.bitindex = ctz_bits(node->bits);
+      loc->index = phamt_firstcell(node);
       loc->index.is_beneath = last_depth;
-      loc->index.is_found = 1;
       last_depth = node->addr_depth;
       node = (PHAMT_t)node->cells[0];
    } while (last_depth < PHAMT_TWIG_DEPTH);
@@ -1464,9 +1462,9 @@ static inline void* phamt_next(PHAMT_t node0, PHAMT_path_t* path)
       ci = loc->index.cellindex + 1;
       if (ci < phamt_cellcount(loc->node)) {
          // We've found a point at which we can descend.
-         loc->index.cellindex = ci;
          mask = highmask_bits(loc->index.bitindex + 1);
          loc->index.bitindex = ctz_bits(loc->node->bits & mask);
+         loc->index.cellindex = (node->flag_full ? loc->index.bitindex : ci);
          // We can dig for the rest.
          node = loc->node->cells[ci];
          if (d < PHAMT_TWIG_DEPTH)
