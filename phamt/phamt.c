@@ -21,24 +21,79 @@
 // This section declares all this file's functions up-font, excepting the module
 // init function, which comes at the very end of the file.
 
+//------------------------------------------------------------------------------
 // PHAMT methods
-static PyObject*  py_phamt_assoc(PyObject* self, PyObject* varargs);
-static PyObject*  py_phamt_dissoc(PyObject* self, PyObject* varargs);
-static PyObject*  py_phamt_get(PyObject* self, PyObject* varargs);
+
+static PyObject*  py_phamt_assoc(PHAMT_t self, PyObject* varargs);
+static PyObject*  py_phamt_dissoc(PHAMT_t self, PyObject* varargs);
+static PyObject*  py_phamt_transient(PHAMT_t self);
+static PyObject*  py_phamt_get(PHAMT_t self, PyObject* varargs);
 static int        py_phamt_contains(PHAMT_t self, PyObject* key);
 static PyObject*  py_phamt_subscript(PHAMT_t self, PyObject* key);
 static Py_ssize_t py_phamt_len(PHAMT_t self);
 static PyObject*  py_phamt_iter(PHAMT_t self);
 static void       py_phamt_dealloc(PHAMT_t self);
 static int        py_phamt_traverse(PHAMT_t self, visitproc visit, void *arg);
+static int        py_phamt_clear(PHAMT_t self);
 static PyObject*  py_phamt_repr(PHAMT_t self);
 static PyObject*  py_phamt_new(PyTypeObject *subtype, PyObject *args,
                                PyObject *kwds);
-// PHAMT type methods (i.e., classmethods)
+
+//------------------------------------------------------------------------------
+// PHAMT_iter Methods
+
+static void      py_phamtiter_dealloc(PHAMT_iter_t self);
+static int       py_phamtiter_traverse(PHAMT_iter_t self, visitproc visit,
+                                       void *arg);
+static int       py_phamtiter_clear(PHAMT_iter_t self);
+static PyObject* py_phamtiter_repr(PHAMT_iter_t self);
+static PyObject* py_phamtiter_iter(PHAMT_iter_t self);
+static PyObject* py_phamtiter_next(PHAMT_iter_t self);
+
+//------------------------------------------------------------------------------
+// PHAMT-type methods (i.e., classmethods)
+
 static PyObject* py_PHAMT_getitem(PyObject *type, PyObject *item);
 static PyObject* py_PHAMT_from_list(PyObject* self, PyObject *const *args,
                                     Py_ssize_t nargs);
-// Module-level functions
+
+//------------------------------------------------------------------------------
+// THAMT methods
+
+static PyObject*  py_thamt_get(THAMT_t self, PyObject* varargs);
+static PyObject*  py_thamt_persistent(THAMT_t self);
+static int        py_thamt_contains(THAMT_t self, PyObject* key);
+static PyObject*  py_thamt_subscript(THAMT_t self, PyObject* key);
+static int        py_thamt_ass_subscript(THAMT_t self, PyObject *key,
+                                         PyObject *v);
+static Py_ssize_t py_thamt_len(THAMT_t self);
+static PyObject*  py_thamt_iter(THAMT_t self);
+static void       py_thamt_dealloc(THAMT_t self);
+static int        py_thamt_traverse(THAMT_t self, visitproc visit, void *arg);
+static int        py_thamt_clear(THAMT_t self);
+static PyObject*  py_thamt_repr(THAMT_t self);
+static PyObject*  py_thamt_new(PyTypeObject *subtype, PyObject *args,
+                               PyObject *kwds);
+
+//------------------------------------------------------------------------------
+// THAMT_iter Methods
+
+static void      py_thamtiter_dealloc(THAMT_iter_t self);
+static int       py_thamtiter_traverse(THAMT_iter_t self, visitproc visit,
+                                       void *arg);
+static int       py_thamtiter_clear(THAMT_iter_t self);
+static PyObject* py_thamtiter_repr(THAMT_iter_t self);
+static PyObject* py_thamtiter_iter(THAMT_iter_t self);
+static PyObject* py_thamtiter_next(THAMT_iter_t self);
+
+//------------------------------------------------------------------------------
+// THAMT-type methods (i.e., classmethods)
+
+static PyObject* py_THAMT_getitem(PyObject *type, PyObject *item);
+
+//------------------------------------------------------------------------------
+// Module-level Functions
+
 static void py_phamtmod_free(void* mod);
 
 
@@ -61,6 +116,7 @@ static PHAMT_t PHAMT_EMPTY_CTYPE = NULL;
 // These values represent data structures that define the Python-C interface for
 // the phamt.core module.
 
+// PHAMTs ......................................................................
 // The PHAMT class methods.
 static PyMethodDef PHAMT_methods[] = {
    {"get",               (PyCFunction)py_phamt_get, METH_VARARGS, NULL},
@@ -69,6 +125,8 @@ static PyMethodDef PHAMT_methods[] = {
                          PyDoc_STR(PHAMT_ASSOC_DOCSTRING)},
    {"dissoc",            (PyCFunction)py_phamt_dissoc, METH_VARARGS,
                          PyDoc_STR(PHAMT_DISSOC_DOCSTRING)},
+   {"transient",         (PyCFunction)py_phamt_transient, METH_NOARGS,
+                         PyDoc_STR(PHAMT_TRANSIENT_DOCSTRING)},
    {"from_list",         (PyCFunction)py_PHAMT_from_list, METH_FASTCALL,
                          PyDoc_STR(PHAMT_FROM_LIST_DOCSTRING)},
    {NULL, NULL, 0, NULL}
@@ -107,12 +165,96 @@ static PyTypeObject PHAMT_type = {
    .tp_getattro = PyObject_GenericGetAttr,
    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
    .tp_traverse = (traverseproc)py_phamt_traverse,
-   // PHAMTs, like tuples, can't make ref links because they are 100% immutable.
-   //.tp_clear = (inquiry)py_phamt_clear,
-   .tp_new = py_phamt_new,
+   .tp_clear = (inquiry)py_phamt_clear,
+   .tp_new = (newfunc)py_phamt_new,
    .tp_repr = (reprfunc)py_phamt_repr,
-   .tp_str = (reprfunc)py_phamt_repr,
+   .tp_str = (reprfunc)py_phamt_repr
 };
+// The PHAMT_iter Type object data.
+static PyTypeObject PHAMT_iter_type = {
+   PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   .tp_name = "phamt.core.PHAMT_iter",
+   .tp_doc = PyDoc_STR(PHAMT_ITER_DOCSTRING),
+   .tp_basicsize = sizeof(struct PHAMT_iter),
+   .tp_itemsize = 0,
+   .tp_dealloc = (destructor)py_phamtiter_dealloc,
+   .tp_repr = (reprfunc)py_phamtiter_repr,
+   .tp_str = (reprfunc)py_phamtiter_repr,
+   .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+   .tp_traverse = (traverseproc)py_phamtiter_traverse,
+   .tp_clear = (inquiry)py_phamtiter_clear,
+   .tp_iter = (getiterfunc)py_phamtiter_iter,
+   .tp_iternext = (iternextfunc)py_phamtiter_next,
+};
+
+// THAMTs ......................................................................
+// The THAMT class methods.
+static PyMethodDef THAMT_methods[] = {
+   {"get",               (PyCFunction)py_thamt_get,        METH_VARARGS,
+                         NULL},
+   {"persistent",        (PyCFunction)py_thamt_persistent, METH_NOARGS,
+                         THAMT_PERSISTENT_DOCSTRING},
+   {"__class_getitem__", (PyCFunction)py_THAMT_getitem,    METH_O|METH_CLASS,
+                         NULL},
+   {NULL, NULL, 0, NULL}
+};
+// The THAMT implementation of the sequence interface.
+static PySequenceMethods THAMT_as_sequence = {
+   0,                             // sq_length
+   0,                             // sq_concat
+   0,                             // sq_repeat
+   0,                             // sq_item
+   0,                             // sq_slice
+   0,                             // sq_ass_item
+   0,                             // sq_ass_slice
+   (objobjproc)py_thamt_contains, // sq_contains
+   0,                             // sq_inplace_concat
+   0,                             // sq_inplace_repeat
+};
+// The THAMT implementation of the Mapping interface.
+static PyMappingMethods THAMT_as_mapping = {
+   (lenfunc)py_thamt_len,                // mp_length
+   (binaryfunc)py_thamt_subscript,       // mp_subscript
+   (objobjargproc)py_thamt_ass_subscript // mp_ass_subscript
+};
+// The THAMT Type object data.
+static PyTypeObject THAMT_type = {
+   PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   "phamt.core.THAMT",
+   .tp_doc = PyDoc_STR(THAMT_DOCSTRING),
+   .tp_basicsize = sizeof(struct THAMT),
+   .tp_itemsize = 0,
+   .tp_methods = THAMT_methods,
+   .tp_as_mapping = &THAMT_as_mapping,
+   .tp_as_sequence = &THAMT_as_sequence,
+   .tp_iter = (getiterfunc)py_thamt_iter,
+   .tp_dealloc = (destructor)py_thamt_dealloc,
+   .tp_getattro = PyObject_GenericGetAttr,
+   .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+   .tp_traverse = (traverseproc)py_thamt_traverse,
+   // PHAMTs, like tuples, can't make ref links because they are 100% immutable.
+   .tp_clear = (inquiry)py_thamt_clear,
+   .tp_new = (newfunc)py_thamt_new,
+   .tp_repr = (reprfunc)py_thamt_repr,
+   .tp_str = (reprfunc)py_thamt_repr,
+};
+// The THAMT_iter Type object data.
+static PyTypeObject THAMT_iter_type = {
+   PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   .tp_name = "phamt.core.THAMT_iter",
+   .tp_doc = PyDoc_STR(THAMT_ITER_DOCSTRING),
+   .tp_basicsize = sizeof(struct THAMT_iter),
+   .tp_itemsize = 0,
+   .tp_dealloc = (destructor)py_thamtiter_dealloc,
+   .tp_repr = (reprfunc)py_thamtiter_repr,
+   .tp_str = (reprfunc)py_thamtiter_repr,
+   .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+   .tp_traverse = (traverseproc)py_thamtiter_traverse,
+   .tp_clear = (inquiry)py_thamtiter_clear,
+   .tp_iter = (getiterfunc)py_thamtiter_iter,
+   .tp_iternext = (iternextfunc)py_thamtiter_next,
+};
+
 // The phamt.core module data.
 static struct PyModuleDef phamt_pymodule = {
    PyModuleDef_HEAD_INIT,
@@ -135,7 +277,7 @@ static struct PyModuleDef phamt_pymodule = {
 //------------------------------------------------------------------------------
 // PHAMT methods
 
-static PyObject* py_phamt_assoc(PyObject* self, PyObject* varargs)
+static PyObject* py_phamt_assoc(PHAMT_t self, PyObject* varargs)
 {
    hash_t h;
    PyObject* key, *val;
@@ -146,9 +288,9 @@ static PyObject* py_phamt_assoc(PyObject* self, PyObject* varargs)
       return NULL;
    }
    h = (hash_t)PyLong_AsSsize_t(key);
-   return (PyObject*)phamt_assoc((PHAMT_t)self, h, val);
+   return (PyObject*)phamt_assoc(self, h, val);
 }
-static PyObject* py_phamt_dissoc(PyObject* self, PyObject* varargs)
+static PyObject* py_phamt_dissoc(PHAMT_t self, PyObject* varargs)
 {
    hash_t h;
    PyObject* key;
@@ -159,9 +301,18 @@ static PyObject* py_phamt_dissoc(PyObject* self, PyObject* varargs)
       return NULL;
    }
    h = (hash_t)PyLong_AsSsize_t(key);
-   return (PyObject*)phamt_dissoc((PHAMT_t)self, h);
+   return (PyObject*)phamt_dissoc(self, h);
 }
-static PyObject* py_phamt_get(PyObject* self, PyObject* varargs)
+static PyObject* py_phamt_transient(PHAMT_t self)
+{
+   THAMT_t u = (THAMT_t)PyObject_GC_New(struct THAMT, &THAMT_type);
+   Py_INCREF(self);
+   u->phamt = self;
+   u->version = 0;
+   PyObject_GC_Track((PyObject*)u);
+   return (PyObject*)u;
+}
+static PyObject* py_phamt_get(PHAMT_t self, PyObject* varargs)
 {
    hash_t h;
    int found;
@@ -183,7 +334,7 @@ static PyObject* py_phamt_get(PyObject* self, PyObject* varargs)
       return NULL;
    }
    h = (hash_t)PyLong_AsSsize_t(key);
-   res = (PyObject*)phamt_lookup((PHAMT_t)self, h, &found);
+   res = (PyObject*)phamt_lookup(self, h, &found);
    if (found) {
       Py_INCREF(res);
       return res;
@@ -228,34 +379,23 @@ static Py_ssize_t py_phamt_len(PHAMT_t self)
 }
 static PyObject *py_phamt_iter(PHAMT_t self)
 {
-   return NULL; // #TODO
+   PHAMT_iter_t it = (PHAMT_iter_t)PyObject_GC_New(struct PHAMT_iter,
+                                                   &PHAMT_iter_type);
+   uint8_t d = self->addr_depth;
+   it->path.steps[d].node = self;
+   it->path.min_depth = d;
+   it->path.value_found = 0xff; // indicates we haven't started.
+   PyObject_GC_Track(it);
+   return (PyObject*)it;
 }
 static void py_phamt_dealloc(PHAMT_t self)
 {
-   PyTypeObject* tp;
-   PyObject* tmp;
-   bits_t ii, ncells;
-   tp = Py_TYPE(self);
+   PyTypeObject* tp = Py_TYPE(self);
+   // Untrack ourself.
    PyObject_GC_UnTrack(self);
-   // Walk through the children, dereferencing them
-   if (self->addr_depth < PHAMT_TWIG_DEPTH || self->flag_pyobject) {
-      if (self->flag_full) {
-         // Use ncells as the iteration variable since we won't need it.
-         for (ncells = self->bits; ncells; ncells &= ~(BITS_ONE << ii)) {
-            ii = ctz_bits(ncells);
-            tmp = self->cells[ii];
-            self->cells[ii] = NULL;
-            Py_DECREF(tmp);
-         }
-      } else {
-         ncells = phamt_cellcount(self);
-         for (ii = 0; ii < ncells; ++ii) {
-            tmp = self->cells[ii];
-            self->cells[ii] = NULL;
-            Py_DECREF(tmp);
-         }
-      }
-   }
+   // Clear the children.
+   py_phamt_clear(self);
+   // Free the node.
    tp->tp_free(self);
 }
 static int py_phamt_traverse(PHAMT_t self, visitproc visit, void *arg)
@@ -275,6 +415,26 @@ static int py_phamt_traverse(PHAMT_t self, visitproc visit, void *arg)
       ncells = phamt_cellcount(self);
       for (ii = 0; ii < ncells; ++ii) {
          Py_VISIT(((PHAMT_t)self)->cells[ii]);
+      }
+   }
+   return 0;
+}
+static int py_phamt_clear(PHAMT_t self)
+{
+   bits_t ii, ncells;
+   // Walk through the children, clearing them.
+   if (self->addr_depth < PHAMT_TWIG_DEPTH || self->flag_pyobject) {
+      if (self->flag_full) {
+         // Use ncells as the iteration variable since we won't need it.
+         for (ncells = self->bits; ncells; ncells &= ~(BITS_ONE << ii)) {
+            ii = ctz_bits(ncells);
+            Py_CLEAR(self->cells[ii]);
+         }
+      } else {
+         ncells = phamt_cellcount(self);
+         for (ii = 0; ii < ncells; ++ii) {
+            Py_CLEAR(self->cells[ii]);
+         }
       }
    }
    return 0;
@@ -320,7 +480,261 @@ PHAMT_t _phamt_new(unsigned ncells)
 }
 
 //------------------------------------------------------------------------------
-// PHAMT Type Methods
+// PHAMT_iter Methods
+
+static void py_phamtiter_dealloc(PHAMT_iter_t self)
+{
+   PyTypeObject* tp;
+   tp = Py_TYPE(self);
+   // Untrack ourself.
+   PyObject_GC_UnTrack(self);
+   // Clear the children.
+   py_phamtiter_clear(self);
+   // Free the object.
+   tp->tp_free(self);
+}
+static int py_phamtiter_traverse(PHAMT_iter_t self, visitproc visit, void *arg)
+{
+   Py_VISIT(Py_TYPE(self));
+   Py_VISIT(self->path.steps[self->path.min_depth].node);
+   return 0;
+}
+static int py_phamtiter_clear(PHAMT_iter_t self)
+{
+   Py_CLEAR(self->path.steps[self->path.min_depth].node);   
+   return 0;
+}
+static PyObject* py_phamtiter_repr(PHAMT_iter_t self)
+{
+   return PyUnicode_FromString("<PHAMT_iter>");
+}
+static PyObject* py_phamtiter_iter(PHAMT_iter_t self)
+{
+   Py_INCREF(self);
+   return (PyObject*)self;
+}
+static PyObject* py_phamtiter_next(PHAMT_iter_t self)
+{
+   PHAMT_loc_t* loc;
+   PHAMT_t node;
+   void* val;
+   hash_t key;
+   // Depending on whether iteration hasn't started, has alerady ended, or is
+   // ongoing, we handle this differently.
+   loc = self->path.steps + self->path.min_depth;
+   node = loc->node;
+   if (self->path.value_found == 0xff) 
+      val = phamt_first(node, &self->path);
+   else if (self->path.value_found)
+      val = phamt_next(node, &self->path);
+   // If there aren't any more, raise the stop-iteration exception.
+   if (!self->path.value_found) {
+      PyErr_SetNone(PyExc_StopIteration);
+      return NULL;
+   }
+   // Otherwise, make a tuple and return it. The key can be derived from the
+   // path.
+   loc = self->path.steps + self->path.max_depth;
+   key = loc->node->address | (hash_t)loc->index.bitindex;
+   return Py_BuildValue("(n,o)", (Py_ssize_t)key, val);
+}
+
+//------------------------------------------------------------------------------
+// THAMT Methods
+
+static PyObject* py_thamt_get(THAMT_t self, PyObject* varargs)
+{
+   return py_phamt_get(self->phamt, varargs);
+}
+static PyObject* py_thamt_persistent(THAMT_t self)
+{
+   Py_INCREF(self->phamt);
+   return (PyObject*)thamt_persist(self->phamt);
+}
+static int py_thamt_contains(THAMT_t self, PyObject* key)
+{
+   return py_phamt_contains(self->phamt, key);
+}
+static PyObject* py_thamt_subscript(THAMT_t self, PyObject* key)
+{
+   return py_phamt_subscript(self->phamt, key);
+}
+static int py_thamt_ass_subscript(THAMT_t self, PyObject* key, PyObject* val)
+{
+   PHAMT_t u;
+   PHAMT_path_t path;
+   hash_t h, n;
+   if (!PyLong_Check(key)) {
+      PyErr_SetObject(PyExc_KeyError, key);
+      return -1;
+   }
+   h = (hash_t)PyLong_AsSsize_t(key);
+   u = self->phamt;
+   n = u->numel;
+   if (val) {
+      self->phamt = thamt_assoc(self->phamt, h, val);
+   } else {
+      // Find the location we're going to delete.
+      phamt_find(self->phamt, h, &path);
+      // We need to raise a key error when h is not found.
+      if (!path.value_found) {
+         PyErr_SetObject(PyExc_KeyError, key);
+         return -1;
+      }
+      self->phamt = _thamt_dissoc_path(&path);
+   }
+   if (u != self->phamt) Py_DECREF(u);
+   if (self->phamt->numel != n) ++(self->version);
+   return 0;
+}
+static Py_ssize_t py_thamt_len(THAMT_t self)
+{
+   return (Py_ssize_t)self->phamt->numel;
+}
+static PyObject *py_thamt_iter(THAMT_t self)
+{
+   THAMT_iter_t it = (THAMT_iter_t)PyObject_GC_New(struct THAMT_iter,
+                                                   &THAMT_iter_type);
+   uint8_t d = self->phamt->addr_depth;
+   it->thamt = self;
+   it->version = self->version;
+   it->path.steps[d].node = self->phamt;
+   it->path.min_depth = d;
+   it->path.value_found = 0xff; // indicates we haven't started.
+   PyObject_GC_Track(it);
+   return (PyObject*)it;
+}
+static void py_thamt_dealloc(THAMT_t self)
+{
+   PyTypeObject* tp = Py_TYPE(self);
+   // Untrack ourself.
+   PyObject_GC_UnTrack(self);
+   // Clear the children.
+   py_thamt_clear(self);
+   // Free the node.
+   tp->tp_free(self);
+}
+static int py_thamt_traverse(THAMT_t self, visitproc visit, void *arg)
+{
+   PyTypeObject* tp = Py_TYPE(self);
+   Py_VISIT(tp);
+   Py_VISIT(self->phamt);
+   return 0;
+}
+static int py_thamt_clear(THAMT_t self)
+{
+   Py_CLEAR(self->phamt);
+   return 0;
+}
+static PyObject* py_thamt_repr(THAMT_t self)
+{
+   dbgnode("[py_thamt_repr]", self->phamt);
+   return PyUnicode_FromFormat("<THAMT:n=%u>", (unsigned)self->phamt->numel);
+}
+static PyObject* py_thamt_new(PyTypeObject *subtype, PyObject *args,
+                              PyObject *kw)
+{
+   PyObject* tmp;
+   PHAMT_t p;
+   THAMT_t u;
+   if (kw && PyDict_Size(kw) > 0) {
+      PyErr_SetString(PyExc_TypeError, "THAMT() takes no keyword arguments");
+      return NULL;
+   }
+   Py_ssize_t sz = PyTuple_Size(args);
+   if (sz == 1) {
+      if (!PyArg_ParseTuple(args, "O:get", &tmp))
+         return NULL;
+      if (Py_TYPE(tmp) != &PHAMT_type) {
+         PyErr_SetString(PyExc_TypeError, "THAMT() argument must be a PHAMT");
+         return NULL;
+      }
+      p = (PHAMT_t)tmp;
+   } else if (sz == 0) {
+      p = PHAMT_EMPTY;
+   } else {
+      PyErr_SetString(PyExc_ValueError, "THAMT() requires 0 or 1 arguments");
+      return NULL;
+   }
+   u = (THAMT_t)PyObject_GC_New(struct THAMT, &THAMT_type);
+   Py_INCREF(p);
+   u->phamt = p;
+   u->version = 0;
+   PyObject_GC_Track((PyObject*)u);
+   return (PyObject*)u;
+}
+
+//------------------------------------------------------------------------------
+// THAMT_iter Methods
+
+static void py_thamtiter_dealloc(THAMT_iter_t self)
+{
+   PyTypeObject* tp;
+   tp = Py_TYPE(self);
+   // Untrack ourself.
+   PyObject_GC_UnTrack(self);
+   // Clear the children.
+   py_thamtiter_clear(self);
+   // Free the object.
+   tp->tp_free(self);
+}
+static int py_thamtiter_traverse(THAMT_iter_t self, visitproc visit, void *arg)
+{
+   Py_VISIT(Py_TYPE(self));
+   Py_VISIT(self->thamt);
+   Py_VISIT(self->path.steps[self->path.min_depth].node);
+   return 0;
+}
+static int py_thamtiter_clear(THAMT_iter_t self)
+{
+   Py_CLEAR(self->thamt);
+   Py_CLEAR(self->path.steps[self->path.min_depth].node);
+   return 0;
+}
+static PyObject* py_thamtiter_repr(THAMT_iter_t self)
+{
+   return PyUnicode_FromString("<THAMT_iter>");
+}
+static PyObject* py_thamtiter_iter(THAMT_iter_t self)
+{
+   Py_INCREF(self);
+   return (PyObject*)self;
+}
+static PyObject* py_thamtiter_next(THAMT_iter_t self)
+{
+   PHAMT_loc_t* loc;
+   PHAMT_t node;
+   void* val;
+   hash_t key;
+   // If the  of the iterator doesn't match the version of the THAMT,
+   // that's a runtime error.
+   if (self->version != self->thamt->version) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      "THAMT changed size during iteration");
+      return NULL;
+   }
+   // Depending on whether iteration hasn't started, has alerady ended, or is
+   // ongoing, we handle this differently.
+   loc = self->path.steps + self->path.min_depth;
+   node = loc->node;
+   if (self->path.value_found == 0xff)
+      val = phamt_first(node, &self->path);
+   else if (self->path.value_found)
+      val = phamt_next(node, &self->path);
+   // If there aren't any more, raise the stop-iteration exception.
+   if (!self->path.value_found) {
+      PyErr_SetNone(PyExc_StopIteration);
+      return NULL;
+   }
+   // Otherwise, make a tuple and return it. The key can be derived from the
+   // path.
+   loc = self->path.steps + self->path.max_depth;
+   key = loc->node->address | (hash_t)loc->index.bitindex;
+   return Py_BuildValue("(n,o)", (Py_ssize_t)key, val);
+}
+
+//------------------------------------------------------------------------------
+// PHAMT-Type Methods
 
 static PyObject *py_PHAMT_getitem(PyObject *type, PyObject *item)
 {
@@ -334,6 +748,15 @@ static PyObject* py_PHAMT_from_list(PyObject* self, PyObject *const *args,
                                     Py_ssize_t nargs)
 {
    return NULL; // #TODO
+}
+
+//------------------------------------------------------------------------------
+// THAMT-Type Methods
+
+static PyObject *py_THAMT_getitem(PyObject *type, PyObject *item)
+{
+   Py_INCREF(type);
+   return type;
 }
 
 //------------------------------------------------------------------------------
@@ -357,6 +780,13 @@ PyMODINIT_FUNC PyInit_core(void)
    // Initialize the PHAMT_type a tp_dict.
    if (PyType_Ready(&PHAMT_type) < 0) return NULL;
    Py_INCREF(&PHAMT_type);
+   // Same for the others.
+   if (PyType_Ready(&PHAMT_iter_type) < 0) return NULL;
+   Py_INCREF(&PHAMT_iter_type);
+   if (PyType_Ready(&THAMT_type) < 0) return NULL;
+   Py_INCREF(&PHAMT_type);
+   if (PyType_Ready(&THAMT_iter_type) < 0) return NULL;
+   Py_INCREF(&THAMT_iter_type);
    // Get the Empty PHAMT ready.
    PHAMT_EMPTY = (PHAMT_t)PyObject_GC_NewVar(struct PHAMT, &PHAMT_type, 0);
    if (!PHAMT_EMPTY) return NULL;

@@ -44,7 +44,7 @@ extern "C" {
    "copies of `phamt_obj` with the requested change.\n"                        \
    "\n"                                                                        \
    "`PHAMT` objects can be created in the following ways:\n"                   \
-   " * by using `phamt_obj.assic(k,v)` or `phamt_obj.dissoc(k)` on existing\n" \
+   " * by using `phamt_obj.assoc(k,v)` or `phamt_obj.dissoc(k)` on existing\n" \
    "   `PHAMT` objects, such as the `PHAMT.empty` object, which represents\n"  \
    "   an empty `PHAMT`;\n"                                                    \
    " * by supplying the `PHAMT.from_list(iter_of_values)` with a list of\n"    \
@@ -75,6 +75,11 @@ extern "C" {
    "iterable `items` in iteration order. This is performed with minimal\n"     \
    "allocations, so it should be more efficient than building the PHAMT from\n"\
    "scratch.\n")
+#define PHAMT_TRANSIENT_DOCSTRING  NULL //#TODO
+#define PHAMT_ITER_DOCSTRING       NULL //#TODO
+#define THAMT_DOCSTRING            NULL //#TODO
+#define THAMT_PERSISTENT_DOCSTRING NULL //#TODO
+#define THAMT_ITER_DOCSTRING       NULL //#TODO
 
 //------------------------------------------------------------------------------
 // hash_t and bits_t
@@ -430,6 +435,51 @@ typedef struct {
    //    found.
    uint8_t value_found;
 } PHAMT_path_t;
+
+// The PHAMT iterator type for Python.
+typedef struct PHAMT_iter {
+   // The Python data.
+   PyObject_HEAD
+   // All the iterator needs is to know is the path of iteration so far.
+   PHAMT_path_t path;
+}* PHAMT_iter_t;
+
+// The THAMT type for Python.
+// THAMTs are just thin layers around PHAMTs; note that the PHAMT type already
+// has all the machinery for dealing with transients via the flag_transient bit,
+// the THAMT type as Python sees
+// Note that the thamt_* and _thamt_* functions in this file deal only with the
+// PHAMT type--specifically with the PHAMTs that are wrapped by THAMTs. These
+// may have the transient bit set, and so might be mutated in place. The actual
+// THAMT_t type that this struct is for is only part of the Python interface to
+// THAMTs.
+typedef struct THAMT {
+   // The Python data.
+   PyObject_HEAD
+   // The PHAMT that we wrap. This may be pesistent or transient--the idea is
+   // that once we start updating it, we replace it with transient nodes and
+   // mutate them directly in further updates. When a THAMT is persisted, we
+   // just flip the transient bit on all the non-persistent nodes and return
+   // this value.
+   PHAMT_t phamt;
+   // THAMTs track a version number specifically so that iterators don't get
+   // screwed up when the THAMT changes underneath them.
+   hash_t version;
+}* THAMT_t;
+
+// The PHAMT iterator type for Python.
+typedef struct THAMT_iter {
+   // The Python data.
+   PyObject_HEAD
+   // All the iterator needs is to know is the path of iteration so far...
+   PHAMT_path_t path;
+   // And the THAMT on which it is operating.
+   THAMT_t thamt;
+   // Transient iterators also need to know the version of the THAMT they
+   // started iterating over so that know if the THAMT was changed. In
+   // persistent iterators, this is ignored.
+   hash_t version;
+}* THAMT_iter_t;
 
 
 //==============================================================================
@@ -1476,8 +1526,8 @@ static inline void* phamt_first(PHAMT_t node, PHAMT_path_t* path)
 static inline void* phamt_next(PHAMT_t node0, PHAMT_path_t* path)
 {
    PHAMT_t node;
-   uint8_t d, ci;
-   bits_t mask;
+   uint8_t d;
+   bits_t mask, b;
    PHAMT_loc_t* loc;
    // We should always return from twig depth, but we can start at whatever
    // depth the path gives us, in case someone has a path pointing to the middle
@@ -1485,14 +1535,19 @@ static inline void* phamt_next(PHAMT_t node0, PHAMT_path_t* path)
    d = path->max_depth;
    do {
       loc = path->steps + d;
-      ci = loc->index.cellindex + 1;
-      if (ci < phamt_cellcount(loc->node)) {
+      // Get the next bitindex, assuming there are more.
+      mask = highmask_bits(loc->index.bitindex + 1);
+      b = loc->node->bits & mask;
+      if (b) {
          // We've found a point at which we can descend.
-         mask = highmask_bits(loc->index.bitindex + 1);
-         loc->index.bitindex = ctz_bits(loc->node->bits & mask);
-         loc->index.cellindex = (node->flag_full ? loc->index.bitindex : ci);
+         loc->index.bitindex = ctz_bits(b);
+         b = popcount_bits(loc->node->bits);
+         if (loc->node->flag_full)
+            loc->index.cellindex = loc->index.bitindex;
+         else
+            loc->index.cellindex++;
          // We can dig for the rest.
-         node = loc->node->cells[ci];
+         node = loc->node->cells[loc->index.cellindex];
          if (d < PHAMT_TWIG_DEPTH)
             node = _phamt_digfirst(node, path);
          return node;
@@ -1753,7 +1808,7 @@ static inline PHAMT_t thamt_persist(PHAMT_t node)
          loc = path.steps + d;
          loc->index = phamt_nextcell(loc->node, loc->index);
       } while (loc->index.is_found);
-      u = u->cells[loc->index.cellindex];
+      u = loc->node->cells[loc->index.cellindex];
       loc = path.steps + u->addr_depth;
       loc->index.is_beneath = d;
       d = u->addr_depth;
