@@ -941,7 +941,7 @@ static inline PHAMT_t _phamt_join_disjoint(PHAMT_t a, PHAMT_t b)
    hash_t h;
    // What's the highest bit at which they differ?
    h = highbitdiff_hash(a->address, b->address);
-   if (h <= HASH_BITCOUNT - PHAMT_ROOT_SHIFT) {
+   if (h < HASH_BITCOUNT - PHAMT_ROOT_SHIFT) {
       // We're allocating a new non-root node.
       bit0 = (h - PHAMT_TWIG_SHIFT) / PHAMT_NODE_SHIFT;
       newdepth = PHAMT_LEVELS - 2 - bit0;
@@ -1506,7 +1506,10 @@ static inline void* _phamt_digfirst(PHAMT_t node, PHAMT_path_t* path)
 // NULL in this case). No refcounting is performed by this function.
 static inline void* phamt_first(PHAMT_t node, PHAMT_path_t* path)
 {
-   path->min_depth = node->addr_depth;
+   uint8_t d = node->addr_depth;
+   path->min_depth = d;
+   path->steps[d].node = node;
+   path->steps[d].index.is_beneath = 0xff;
    // Check that this node isn't empty.
    if (node->numel == 0) {
       path->value_found = 0;
@@ -1515,7 +1518,6 @@ static inline void* phamt_first(PHAMT_t node, PHAMT_path_t* path)
       return NULL;
    }
    // Otherwise, digfirst will take care of things.
-   path->steps[node->addr_depth].index.is_beneath = 0xff;
    return _phamt_digfirst(node, path);
 }
 // phamt_next(node, iter)
@@ -1533,33 +1535,34 @@ static inline void* phamt_next(PHAMT_t node0, PHAMT_path_t* path)
    // depth the path gives us, in case someone has a path pointing to the middle
    // of a phamt somewhere.
    d = path->max_depth;
-   do {
+   while (d <= PHAMT_TWIG_DEPTH) {
       loc = path->steps + d;
       // Get the next bitindex, assuming there are more.
-      mask = highmask_bits(loc->index.bitindex + 1);
+      mask = highmask_bits(loc->index.bitindex) << 1;
       b = loc->node->bits & mask;
       if (b) {
          // We've found a point at which we can descend.
          loc->index.bitindex = ctz_bits(b);
-         b = popcount_bits(loc->node->bits);
          if (loc->node->flag_full)
             loc->index.cellindex = loc->index.bitindex;
          else
-            loc->index.cellindex++;
+            ++(loc->index.cellindex);
          // We can dig for the rest.
          node = loc->node->cells[loc->index.cellindex];
-         if (d < PHAMT_TWIG_DEPTH)
+         if (d < PHAMT_TWIG_DEPTH) {
+            path->steps[node->addr_depth].index.is_beneath = d;
             node = _phamt_digfirst(node, path);
+         }
          return node;
-      } else if (d == 0) {
+      } else if (d == path->min_depth) {
          break;
       } else {
          d = loc->index.is_beneath;
       }
-   } while (d <= PHAMT_TWIG_DEPTH);
+   }
    // If we reach this point, we didn't find anything.
    path->value_found = 0;
-   path->max_depth = 0;
+   path->max_depth = 0xff;
    path->edit_depth = 0;
    path->min_depth = 0;
    return NULL;

@@ -305,7 +305,7 @@ static PyObject* py_phamt_dissoc(PHAMT_t self, PyObject* varargs)
 }
 static PyObject* py_phamt_transient(PHAMT_t self)
 {
-   THAMT_t u = (THAMT_t)PyObject_GC_New(struct THAMT, &THAMT_type);
+   THAMT_t u = (THAMT_t)PyObject_GC_NewVar(struct THAMT, &THAMT_type, 0);
    Py_INCREF(self);
    u->phamt = self;
    u->version = 0;
@@ -379,9 +379,10 @@ static Py_ssize_t py_phamt_len(PHAMT_t self)
 }
 static PyObject *py_phamt_iter(PHAMT_t self)
 {
-   PHAMT_iter_t it = (PHAMT_iter_t)PyObject_GC_New(struct PHAMT_iter,
-                                                   &PHAMT_iter_type);
+   PHAMT_iter_t it = (PHAMT_iter_t)PyObject_GC_NewVar(struct PHAMT_iter,
+                                                      &PHAMT_iter_type, 0);
    uint8_t d = self->addr_depth;
+   Py_INCREF(self);
    it->path.steps[d].node = self;
    it->path.min_depth = d;
    it->path.value_found = 0xff; // indicates we haven't started.
@@ -536,7 +537,7 @@ static PyObject* py_phamtiter_next(PHAMT_iter_t self)
    // path.
    loc = self->path.steps + self->path.max_depth;
    key = loc->node->address | (hash_t)loc->index.bitindex;
-   return Py_BuildValue("(n,o)", (Py_ssize_t)key, val);
+   return Py_BuildValue("(nO)", (Py_ssize_t)key, val);
 }
 
 //------------------------------------------------------------------------------
@@ -593,9 +594,10 @@ static Py_ssize_t py_thamt_len(THAMT_t self)
 }
 static PyObject *py_thamt_iter(THAMT_t self)
 {
-   THAMT_iter_t it = (THAMT_iter_t)PyObject_GC_New(struct THAMT_iter,
-                                                   &THAMT_iter_type);
+   THAMT_iter_t it = (THAMT_iter_t)PyObject_GC_NewVar(struct THAMT_iter,
+                                                      &THAMT_iter_type, 0);
    uint8_t d = self->phamt->addr_depth;
+   Py_INCREF(self);
    it->thamt = self;
    it->version = self->version;
    it->path.steps[d].node = self->phamt;
@@ -656,7 +658,7 @@ static PyObject* py_thamt_new(PyTypeObject *subtype, PyObject *args,
       PyErr_SetString(PyExc_ValueError, "THAMT() requires 0 or 1 arguments");
       return NULL;
    }
-   u = (THAMT_t)PyObject_GC_New(struct THAMT, &THAMT_type);
+   u = (THAMT_t)PyObject_GC_NewVar(struct THAMT, &THAMT_type, 0);
    Py_INCREF(p);
    u->phamt = p;
    u->version = 0;

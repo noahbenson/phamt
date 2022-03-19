@@ -27,6 +27,7 @@ class TestPHAMT(TestCase):
         d = {}
         u = PHAMT.empty
         inserts = []
+        #dbgmsg = ["START"]
         for ii in range(n):
             # What to do? assoc or dissoc?
             if len(d) == 0 or randint(0,3):
@@ -34,20 +35,22 @@ class TestPHAMT(TestCase):
                 v = set([ii])
                 vr = ref(v)
                 k = randint(minint, maxint)
-                #print(f"     assoc {k}")
+                #dbgmsg.append(f"     assoc {k}")
                 u = u.assoc(k, v)
                 d[k] = vr
                 inserts.append(vr)
             else:
                 # Choose k frmo in d
                 k = choice(list(d))
-                #print(f"     dissoc {k}")
+                #dbgmsg.append(f"     dissoc {k}")
                 u = u.dissoc(k)
                 del d[k]
             # At every step, these must be equal.
             self.assertEqual(len(d), len(u))
             for (k,v) in d.items():
-                if k not in u: print(k)
+                #if k not in u:
+                #    for dm in dbgmsg: print(dm)
+                #    print(f"{k} not in u!")
                 self.assertTrue(k in u)
                 self.assertTrue(v() is not None)
                 self.assertTrue(u[k] is v())
@@ -60,7 +63,25 @@ class TestPHAMT(TestCase):
         """
         self.assertTrue(len(PHAMT.empty) == 0)
         self.assertFalse(any(x in PHAMT.empty for x in range(100)))
-        # #TODO: test iteration
+    def test_iteration(self):
+        """Tests that `PHAMT` iteration works correctly.
+        """
+        import gc
+        (u, d, assocs) = self.make_random_pair(500)
+        # First, iterate over d:
+        n = 0
+        for (k,v) in u:
+            self.assertTrue(k in d)
+            self.assertEqual(d[k](), v)
+            n += 1
+        self.assertEqual(n, len(d))
+        # if we delete u, all the assocs should get gc'ed (i.e., iteration
+        # shouldn't interfe with garbage collection).
+        del u
+        (k,v) = (None,None)
+        gc.collect()
+        for r in assocs:
+            self.assertEqual(r(), None)
     def test_assoc(self):
         """Tests that `PHAMT.assoc` works correctly.
 
