@@ -27,12 +27,54 @@ lists.
 >>> items[-3]
 "item 2"
 
+# Iterate over the items.
+for (k,v) in items:
+    print(f"key: {k}; value: {v}")
+key: 42; value: item 1
+key: -3; value: item 2
+
 # Remove items.
 >>> item = items.dissoc(42)
 
 >>> item.get(42, "not found")
 "not found"
 ```
+
+## Current Status
+
+The `phamt` library is currently under development. This section breaks down
+the features and goals of the project and where they stand.
+
+### Tested Features
+
+`PHAMT` is working and is reasonably well tested overall. This includes updating
+PHAMTs, iterating over PHAMTs, and creating PHAMTs. The current tests ensure
+that garage collection is working correctly for deleted PHAMT components as
+well.
+
+### Written Features
+
+`THAMT` is written and works for some examples; though most examples produce
+segmentation faults somewhere in the operation. No tests are currently written
+for THAMT.
+
+### Goals
+
+* `PHAMT`
+  * `PHAMT.from_list(q)` (or `from_iter`?) should efficiently create a `PHAMT`
+    whose keys are the numbers `0` through `len(q)-1` and whose values are the
+    elements in `q`. This can be done slightly more efficiently using a
+    bottom-up approach than can be done using transients (though they are likely
+    almost as fast).
+  * `PHAMT(d)` for a `dict` with integer keys, `d`, should efficiently allocate
+    a `PHAMT` with matching keys/values as `d`.
+* General
+  * Write/publish a benchmarks notebook to compare runtimes performace of
+    `PHAMT` and `THAMT` to other similar Python data structures.
+  * Write more documentation.
+  * Implement GitHub Actions testing for a variety of computer architectures.
+  * Write a companion Python-only version.
+  * Publish to PyPI.
 
 ## License
 

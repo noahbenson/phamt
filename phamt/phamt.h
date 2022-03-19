@@ -76,10 +76,8 @@ extern "C" {
    "allocations, so it should be more efficient than building the PHAMT from\n"\
    "scratch.\n")
 #define PHAMT_TRANSIENT_DOCSTRING  NULL //#TODO
-#define PHAMT_ITER_DOCSTRING       NULL //#TODO
 #define THAMT_DOCSTRING            NULL //#TODO
 #define THAMT_PERSISTENT_DOCSTRING NULL //#TODO
-#define THAMT_ITER_DOCSTRING       NULL //#TODO
 
 //------------------------------------------------------------------------------
 // hash_t and bits_t

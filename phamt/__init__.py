@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 ####################################################################################################
 # phamt/__init__.py
@@ -7,7 +8,7 @@
 """Persistent Hash Array Mapped Trie data structure for Python.
 """
 
-from .core import PHAMT
+from .core import (PHAMT, THAMT)
 
 __version__ = "0.0.1"
 

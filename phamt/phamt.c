@@ -174,7 +174,6 @@ static PyTypeObject PHAMT_type = {
 static PyTypeObject PHAMT_iter_type = {
    PyVarObject_HEAD_INIT(&PyType_Type, 0)
    .tp_name = "phamt.core.PHAMT_iter",
-   .tp_doc = PyDoc_STR(PHAMT_ITER_DOCSTRING),
    .tp_basicsize = sizeof(struct PHAMT_iter),
    .tp_itemsize = 0,
    .tp_dealloc = (destructor)py_phamtiter_dealloc,
@@ -242,7 +241,6 @@ static PyTypeObject THAMT_type = {
 static PyTypeObject THAMT_iter_type = {
    PyVarObject_HEAD_INIT(&PyType_Type, 0)
    .tp_name = "phamt.core.THAMT_iter",
-   .tp_doc = PyDoc_STR(THAMT_ITER_DOCSTRING),
    .tp_basicsize = sizeof(struct THAMT_iter),
    .tp_itemsize = 0,
    .tp_dealloc = (destructor)py_thamtiter_dealloc,
@@ -732,7 +730,7 @@ static PyObject* py_thamtiter_next(THAMT_iter_t self)
    // path.
    loc = self->path.steps + self->path.max_depth;
    key = loc->node->address | (hash_t)loc->index.bitindex;
-   return Py_BuildValue("(n,o)", (Py_ssize_t)key, val);
+   return Py_BuildValue("(nO)", (Py_ssize_t)key, val);
 }
 
 //------------------------------------------------------------------------------
@@ -786,7 +784,7 @@ PyMODINIT_FUNC PyInit_core(void)
    if (PyType_Ready(&PHAMT_iter_type) < 0) return NULL;
    Py_INCREF(&PHAMT_iter_type);
    if (PyType_Ready(&THAMT_type) < 0) return NULL;
-   Py_INCREF(&PHAMT_type);
+   Py_INCREF(&THAMT_type);
    if (PyType_Ready(&THAMT_iter_type) < 0) return NULL;
    Py_INCREF(&THAMT_iter_type);
    // Get the Empty PHAMT ready.
@@ -822,6 +820,11 @@ PyMODINIT_FUNC PyInit_core(void)
    // The PHAMT type.
    if (PyModule_AddObject(m, "PHAMT", (PyObject*)&PHAMT_type) < 0) {
       Py_DECREF(&PHAMT_type);
+      return NULL;
+   }
+   // The THAMT type.
+   if (PyModule_AddObject(m, "THAMT", (PyObject*)&THAMT_type) < 0) {
+      Py_DECREF(&THAMT_type);
       return NULL;
    }
    // Debugging things that are useful to print.
