@@ -28,8 +28,8 @@ lists.
 "item 2"
 
 # Iterate over the items.
-for (k,v) in items:
-    print(f"key: {k}; value: {v}")
+>>> for (k,v) in items:
+        print(f"key: {k}; value: {v}")
 key: 42; value: item 1
 key: -3; value: item 2
 
@@ -48,9 +48,9 @@ the features and goals of the project and where they stand.
 ### Tested Features
 
 `PHAMT` is working and is reasonably well tested overall. This includes updating
-PHAMTs, iterating over PHAMTs, and creating PHAMTs. The current tests ensure
-that garage collection is working correctly for deleted PHAMT components as
-well.
+PHAMTs, iterating over PHAMTs, creating PHAMTs, and querying PHAMTs. The current
+tests ensure that garbage collection is working correctly for deleted PHAMT
+components as well.
 
 ### Written Features
 
