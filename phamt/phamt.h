@@ -75,9 +75,35 @@ extern "C" {
    "iterable `items` in iteration order. This is performed with minimal\n"     \
    "allocations, so it should be more efficient than building the PHAMT from\n"\
    "scratch.\n")
-#define PHAMT_TRANSIENT_DOCSTRING  NULL //#TODO
-#define THAMT_DOCSTRING            NULL //#TODO
-#define THAMT_PERSISTENT_DOCSTRING NULL //#TODO
+#define PHAMT_TRANSIENT_DOCSTRING (                                            \
+   "Returns an equivalent transient HAMT (`THAMT`) object.\n"                  \
+   "\n"                                                                        \
+   "`phamt.transient()` returns a transient `THAMT` object that is\n"          \
+   "equivalent to `phamt`. This operation can be performed in constant time,\n"\
+   "and in-place updates to the resulting `THAMT` are performed with minimal\n"\
+   "allocations.\n")
+#define THAMT_DOCSTRING (                                                      \
+   "A Transient Hash Array Mapped Trie (THAMT) type.\n"                        \
+   "\n"                                                                        \
+   "The `THAMT` class represents a minimal mutable persistent mapping type\n"  \
+   "that can be used to efficiently edit persistent `PHAMT` objects in\n"      \
+   "Python. (See also `PHAMT`). A `THAMT` object is essentially a tree\n"      \
+   "structure that maps integer keys (hashes) to values, which may be any\n"   \
+   "Python objects.\n"                                                         \
+   "\n"                                                                        \
+   "`THAMT` objects can be greated from `PHAMT` objects (i.e.,\n"              \
+   "`thamt = THAMT(phamt)`) in constant time. Unlike `PHAMT` objects,\n"       \
+   "`THAMT` objects can be edited in-place like dictionaries. These edits\n"   \
+   "are more efficient with respect to time than update to the `PHAMT` tyoe,\n"\
+   "however, they are slightly less space efficient than pure `PHAMT`s. Once\n"\
+   "a `THAMT` has been edited, it can be efficiently converted back into a\n"  \
+   "`PHAMT` object using the `thamt.persistent()` method.\n")
+#define THAMT_PERSISTENT_DOCSTRING (                                           \
+   "Returns an equivalent persistent HAMT (`PHAMT`) object.\n"                 \
+   "\n"                                                                        \
+   "`thamt.persistent()` returns a persistent `PHAMT` object that is\n"        \
+   "equivalent to `thamt`. This operation can be performed very efficiently\n" \
+   "as it requires no allocations.\n")
 
 //------------------------------------------------------------------------------
 // hash_t and bits_t
