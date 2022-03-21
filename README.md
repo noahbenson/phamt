@@ -72,8 +72,15 @@ TypeError: 'phamt.core.PHAMT' object does not support item assignment
 >>> tmp[10]
 10
 
+# THAMTs also support iteration.
+>>> for (k,v) in tmp:
+        print(f"key: {k}; value: {v}")
+key: 42; value: item 1
+key: -3; value: item 2
+key: 10; value: 10
+
 # THAMTs can be efficiently turned into PHAMTs.
->>> items = tmp.persistent()
+>>> edited_items = tmp.persistent()
 ```
 
 ## Current Status
