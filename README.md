@@ -11,21 +11,35 @@ lists.
 
 ## Example Usage
 
-```python
->>> from phamt import PHAMT
+### PHAMT Usage
 
-# Start with the empty PHAMT.
+```python
+# The phamt library contains 2 objects: the PHAMT and THAMT classes.
+>>> from phamt import PHAMT, THAMT
+
+# The PHAMT class contains the only instance of an empty PHAMT.
 >>> nothing = PHAMT.empty
 
-# Add some key-value pairs to it.
->>> items = nothing.assoc(42, "item 1").assoc(-3, "item 2")
+# We can add key/value pairs to a PHAMT object by using the assoc method.
+>>> items = nothing.assoc(42, "item 1")
+>>> items = items.assoc(-3, "item 2")
+>>> items = items.assoc(9999, "item 3")
 
-# Lookup the items.
+# We can lookup the items just like in a normal dictionary.
 >>> items[42]
 "item 1"
 
 >>> items[-3]
 "item 2"
+
+>>> items[9999]
+"item 3"
+
+# We can remove keys using the dissoc method.
+>>> items = items.dissoc(9999)
+
+>>> item.get(9999, "not found")
+"not found"
 
 # Iterate over the items.
 >>> for (k,v) in items:
@@ -33,11 +47,33 @@ lists.
 key: 42; value: item 1
 key: -3; value: item 2
 
-# Remove items.
->>> item = items.dissoc(42)
+# PHAMTs cannot be edited, however.
+>>> items[10] = 10
+TypeError: 'phamt.core.PHAMT' object does not support item assignment
+```
 
->>> item.get(42, "not found")
-"not found"
+### THAMT Usage
+
+```python
+# The THAMT class can be created from any PHAMT. (This is O(1).)
+>>> tmp = THAMT(items)
+
+# THAMTs are also dictionaries like PHAMTs.
+>>> tmp[42]
+"item 1"
+
+>>> tmp[-3]
+"item 2"
+
+# Unlike PHAMTs, THAMTs can be edited in-place. This does not modify the
+# original PHAMT object.
+>>> tmp[10] = 10
+
+>>> tmp[10]
+10
+
+# THAMTs can be efficiently turned into PHAMTs.
+>>> items = tmp.persistent()
 ```
 
 ## Current Status
