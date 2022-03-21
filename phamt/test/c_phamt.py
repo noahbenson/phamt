@@ -5,7 +5,7 @@
 # By Noah C. Benson
 
 from unittest import TestCase
-from ..core import PHAMT
+from ..core import PHAMT, THAMT
 
 class TestPHAMT(TestCase):
     """Tests of the `phamt.PHAMT` type."""
@@ -27,7 +27,6 @@ class TestPHAMT(TestCase):
         d = {}
         u = PHAMT.empty
         inserts = []
-        #dbgmsg = ["START"]
         for ii in range(n):
             # What to do? assoc or dissoc?
             if len(d) == 0 or randint(0,3):
@@ -35,25 +34,80 @@ class TestPHAMT(TestCase):
                 v = set([ii])
                 vr = ref(v)
                 k = randint(minint, maxint)
-                #dbgmsg.append(f"     assoc {k}")
                 u = u.assoc(k, v)
                 d[k] = vr
                 inserts.append(vr)
             else:
                 # Choose k frmo in d
                 k = choice(list(d))
-                #dbgmsg.append(f"     dissoc {k}")
                 u = u.dissoc(k)
                 del d[k]
             # At every step, these must be equal.
             self.assertEqual(len(d), len(u))
             for (k,v) in d.items():
-                #if k not in u:
-                #    for dm in dbgmsg: print(dm)
-                #    print(f"{k} not in u!")
                 self.assertTrue(k in u)
                 self.assertTrue(v() is not None)
                 self.assertTrue(u[k] is v())
+        return (u, d, inserts)
+    def make_random_pair_transient(self, n=100, minint=None, maxint=None):
+        """Peforms a random set of operations on both a dict and a THAMT and
+        returns both.
+
+        The dict is made with values that are weakrefs to the same objects that
+        make up the THAMT values. They should otherwise be equal.
+
+        Also returns a list of (ordered) weakref references to the values that
+        were inserted (some may be garbage collected already, that is fine).
+
+        At random intervals during its construction, the THAMT is persisted and
+        checked against the dict.
+        """
+        from random import (randint, choice)
+        from weakref import ref
+        if minint is None: minint = -9223372036854775808
+        if maxint is None: maxint = 9223372036854775807
+        d = {}
+        u = THAMT()
+        inserts = []
+        lns = ["START"]
+        for ii in range(n):
+            # What to do? assoc or dissoc?
+            if len(d) == 0 or randint(0,3):
+                # assoc:
+                v = set([ii])
+                vr = ref(v)
+                k = randint(minint, maxint)
+                lns.append(f"   assoc {k}")
+                u[k] = v
+                d[k] = vr
+                inserts.append(vr)
+            else:
+                # Choose k from in d
+                k = choice(list(d))
+                lns.append(f"   dissoc {k}")
+                del u[k]
+                del d[k]
+            # Ocassionally, we persist and check the THAMT.
+            try:
+                if not randint(0, n // 10):
+                    p = u.persistent()
+                    self.assertEqual(len(d), len(p))
+                    for (k,v) in d.items():
+                        self.assertTrue(k in u)
+                        self.assertTrue(v() is not None)
+                        self.assertTrue(p[k] is v())
+                # At every step, these must be equal.
+                self.assertEqual(len(d), len(u))
+                for (k,v) in d.items():
+                    self.assertTrue(k in u)
+                    self.assertTrue(v() is not None)
+                    self.assertTrue(u[k] is v())
+                for (k,v) in u:
+                    self.assertTrue(k in d)
+                    self.assertTrue(d[k]() is v)
+            except Exception:
+                for ln in lns: print(ln)
+                raise
         return (u, d, inserts)
     def test_empty(self):
         """Tests that `PHAMT.empty` has the correct properties.
@@ -82,10 +136,11 @@ class TestPHAMT(TestCase):
         gc.collect()
         for r in assocs:
             self.assertEqual(r(), None)
-    def test_assoc(self):
-        """Tests that `PHAMT.assoc` works correctly.
+    def test_edit(self):
+        """Tests that `PHAMT.assoc` and `PHAMT.dissoc` work correctly.
 
         The `assoc` method is used to add items to the PHAMT or to replace them.
+        The `dissoc` method is used to remove items.
         """
         nought = PHAMT.empty
         p1 = nought.assoc(10, '10')
@@ -136,7 +191,41 @@ class TestPHAMT(TestCase):
         for (k,v) in d.items():
             self.assertTrue(k in u)
             self.assertTrue(u[k] is d[k]())
-        # #TODO: test iteration
+    def test_thamt(self):
+        """Tests that THAMT objects work correctly.
+        """
+        import gc
+        for k in range(5):
+            (u, d, assocs) = self.make_random_pair_transient(500)
+            # First, iterate over d::
+            n = 0
+            for (k,v) in u:
+                self.assertTrue(k in d)
+                self.assertEqual(d[k](), v)
+                n += 1
+            self.assertEqual(n, len(d))
+            # Then check that these stay equal after persisting u.
+            p = u#.persistent()
+            n = 0
+            for (k,v) in u:
+                self.assertTrue(k in d)
+                self.assertEqual(d[k](), v)
+                n += 1
+            self.assertEqual(n, len(d))
+            n = 0
+            for (k,v) in p:
+                self.assertTrue(k in d)
+                self.assertEqual(d[k](), v)
+                n += 1
+            self.assertEqual(n, len(d))
+            # if we delete u, all the assocs should get gc'ed (i.e., iteration
+            # shouldn't interfere with garbage collection).
+            del u
+            del p
+            (k,v) = (None,None)
+            gc.collect()
+            for r in assocs:
+                self.assertEqual(r(), None)
     def test_gc(self):
         """Tests that PHAMT objects are garbage collectable and allow their
         values to be garbage collected.

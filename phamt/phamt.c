@@ -547,7 +547,6 @@ static PyObject* py_thamt_get(THAMT_t self, PyObject* varargs)
 }
 static PyObject* py_thamt_persistent(THAMT_t self)
 {
-   Py_INCREF(self->phamt);
    return (PyObject*)thamt_persist(self->phamt);
 }
 static int py_thamt_contains(THAMT_t self, PyObject* key)
@@ -562,14 +561,13 @@ static int py_thamt_ass_subscript(THAMT_t self, PyObject* key, PyObject* val)
 {
    PHAMT_t u;
    PHAMT_path_t path;
-   hash_t h, n;
+   hash_t h;
    if (!PyLong_Check(key)) {
       PyErr_SetObject(PyExc_KeyError, key);
       return -1;
    }
    h = (hash_t)PyLong_AsSsize_t(key);
    u = self->phamt;
-   n = u->numel;
    if (val) {
       self->phamt = thamt_assoc(self->phamt, h, val);
    } else {
@@ -582,8 +580,8 @@ static int py_thamt_ass_subscript(THAMT_t self, PyObject* key, PyObject* val)
       }
       self->phamt = _thamt_dissoc_path(&path);
    }
-   if (u != self->phamt) Py_DECREF(u);
-   if (self->phamt->numel != n) ++(self->version);
+   Py_DECREF(u);
+   ++(self->version);
    return 0;
 }
 static Py_ssize_t py_thamt_len(THAMT_t self)
@@ -682,13 +680,11 @@ static int py_thamtiter_traverse(THAMT_iter_t self, visitproc visit, void *arg)
 {
    Py_VISIT(Py_TYPE(self));
    Py_VISIT(self->thamt);
-   Py_VISIT(self->path.steps[self->path.min_depth].node);
    return 0;
 }
 static int py_thamtiter_clear(THAMT_iter_t self)
 {
    Py_CLEAR(self->thamt);
-   Py_CLEAR(self->path.steps[self->path.min_depth].node);
    return 0;
 }
 static PyObject* py_thamtiter_repr(THAMT_iter_t self)
@@ -710,13 +706,12 @@ static PyObject* py_thamtiter_next(THAMT_iter_t self)
    // that's a runtime error.
    if (self->version != self->thamt->version) {
       PyErr_SetString(PyExc_RuntimeError,
-                      "THAMT changed size during iteration");
+                      "THAMT updated during iteration");
       return NULL;
    }
    // Depending on whether iteration hasn't started, has alerady ended, or is
    // ongoing, we handle this differently.
-   loc = self->path.steps + self->path.min_depth;
-   node = loc->node;
+   node = self->thamt->phamt;
    if (self->path.value_found == 0xff)
       val = phamt_first(node, &self->path);
    else if (self->path.value_found)
@@ -730,6 +725,8 @@ static PyObject* py_thamtiter_next(THAMT_iter_t self)
    // path.
    loc = self->path.steps + self->path.max_depth;
    key = loc->node->address | (hash_t)loc->index.bitindex;
+   dbgmsg(" -- %u %u\n", (unsigned)key, (unsigned)self->path.max_depth);
+   dbgpath("[thamtiter_next]", &self->path);
    return Py_BuildValue("(nO)", (Py_ssize_t)key, val);
 }
 

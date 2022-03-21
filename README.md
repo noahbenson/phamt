@@ -52,11 +52,7 @@ PHAMTs, iterating over PHAMTs, creating PHAMTs, and querying PHAMTs. The current
 tests ensure that garbage collection is working correctly for deleted PHAMT
 components as well.
 
-### Written Features
-
-`THAMT` is written and works for some examples; though most examples produce
-segmentation faults somewhere in the operation. No tests are currently written
-for THAMT.
+`THAMT` is also written and is reasonably well tested overall.
 
 ### Goals
 

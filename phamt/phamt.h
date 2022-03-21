@@ -1096,16 +1096,15 @@ static inline PHAMT_t _thamt_copy_addcell(PHAMT_t node, PHAMT_index_t ci,
    PHAMT_t u;
    bits_t ncells = phamt_cellcount(node),
           maxcells = phamt_maxcells(node->addr_depth);
-   dbgnode("[_phamt_copy_addcell]", node);
-   dbgci("[_phamt_copy_addcell]", ci);
+   dbgnode("[_thamt_copy_addcell]", node);
+   dbgci("[_thamt_copy_addcell]", ci);
    if (node->flag_transient) {
       // We don't need to allocate anything--we just change in place.
       node->cells[ci.bitindex] = val;
       node->bits |= (BITS_ONE << ci.bitindex);
+      node->flag_firstn = firstn_bits(node->bits);
       if (node->flag_pyobject || node->addr_depth < PHAMT_TWIG_DEPTH)
          Py_INCREF((PyObject*)val);
-      // These functions always give their caller a novel reference to the
-      // node that is returned, so to be consistent, we must incref here.
       Py_INCREF(node);
       return node;
    }
@@ -1149,8 +1148,8 @@ static inline PHAMT_t _thamt_copy_delcell(PHAMT_t node, PHAMT_index_t ci)
       if (node->flag_pyobject || node->addr_depth < PHAMT_TWIG_DEPTH)
          Py_DECREF(node->cells[ci.bitindex]);
       node->bits &= ~(BITS_ONE << ci.bitindex);
-      // These functions always give their caller a novel reference to the
-      // node that is returned, so to be consistent, we must incref here.
+      node->flag_firstn = firstn_bits(node->bits);
+
       Py_INCREF(node);
       return node;
    }
@@ -1193,11 +1192,11 @@ static inline PHAMT_t _thamt_copy_delcell(PHAMT_t node, PHAMT_index_t ci)
 static inline PHAMT_t _thamt_join_disjoint(PHAMT_t a, PHAMT_t b)
 {
    PHAMT_t u;
-   uint8_t bit0, shift, newdepth;
+   uint8_t bit0, shift, newdepth, ii;
    hash_t h;
    // What's the highest bit at which they differ?
    h = highbitdiff_hash(a->address, b->address);
-   if (h <= HASH_BITCOUNT - PHAMT_ROOT_SHIFT) {
+   if (h < HASH_BITCOUNT - PHAMT_ROOT_SHIFT) {
       // We're allocating a new non-root node.
       bit0 = (h - PHAMT_TWIG_SHIFT) / PHAMT_NODE_SHIFT;
       newdepth = PHAMT_LEVELS - 2 - bit0;
@@ -1222,12 +1221,12 @@ static inline PHAMT_t _thamt_join_disjoint(PHAMT_t a, PHAMT_t b)
    // We use h to store the new minleaf value.
    u->bits = 0;
    h = lowmask_hash(shift);
-   bit0 = h & (a->address >> bit0);
-   u->bits |= BITS_ONE << bit0;
-   u->cells[bit0] = a;
-   bit0 = h & (b->address >> bit0);
-   u->bits |= BITS_ONE << bit0;
-   u->cells[bit0] = b;
+   ii = h & (a->address >> bit0);
+   u->bits |= BITS_ONE << ii;
+   u->cells[ii] = a;
+   ii = h & (b->address >> bit0);
+   u->bits |= BITS_ONE << ii;
+   u->cells[ii] = b;
    u->flag_firstn = u->bits == 3;
    // We need to register the new node u with the garbage collector.
    PyObject_GC_Track((PyObject*)u);
@@ -1625,16 +1624,24 @@ static inline PHAMT_t _thamt_assoc_path(PHAMT_path_t* path, hash_t k,
    // deepest node in the path.
    // We now step up through the path, rebuilding the nodes.
    while (depth != path->min_depth) {
-      if (u == loc->node) {
-         Py_INCREF(node);
-         return node;
+      if (loc->node == u) {
+         // We just edited a transient, so we can simplify the rest of this.
+         Py_DECREF(u);
+         do {
+            depth = loc->index.is_beneath;
+            loc = path->steps + depth;
+            u = loc->node;
+            u->numel += dnumel;
+         } while (depth != path->min_depth);
+         Py_INCREF(u);
+      } else {
+         depth = loc->index.is_beneath;
+         loc = path->steps + depth;
+         node = _thamt_copy_chgcell(loc->node, loc->index, u);
+         Py_DECREF(u);
+         u = node;
+         u->numel += dnumel;
       }
-      depth = loc->index.is_beneath;
-      loc = path->steps + depth;
-      node = u;
-      u = _thamt_copy_chgcell(loc->node, loc->index, u);
-      Py_DECREF(node);
-      u->numel += dnumel;
    }
    // At the end of this loop, u is the replacement node, and should be ready.
    return u;
@@ -1648,7 +1655,7 @@ static inline void _thamt_clear(PHAMT_t node)
    bits_t b, bi;
    // Decref the Python objects.
    if (node->flag_pyobject || node->addr_depth != PHAMT_TWIG_DEPTH) {
-      for (b = node->bits; b; b &= (BITS_ONE << bi)) {
+      for (b = node->bits; b; b &= ~(BITS_ONE << bi)) {
          bi = ctz_bits(b);
          Py_DECREF(node->cells[bi]);
       }
@@ -1705,8 +1712,6 @@ static inline PHAMT_t _thamt_dissoc_path(PHAMT_path_t* path)
             u = loc->node->cells[1 - loc->index.cellindex];
          }
          Py_INCREF(u);
-         if (depth == path->min_depth)
-            return u;
       } else {
          u = _thamt_copy_delcell(loc->node, loc->index);
          --(u->numel);
@@ -1718,21 +1723,25 @@ static inline PHAMT_t _thamt_dissoc_path(PHAMT_path_t* path)
    // At this point, u is the replacement node for loc->node, which is the
    // deepest node in the path.
    // We now step up through the path, rebuilding the nodes.
-   while (depth > path->min_depth) {
-      if (u == loc->node) {
-         // We can short circuit this part because at this point there will be
-         // no more need to change the rest of the nodes. We can just return
-         // the transient head.
+   while (depth != path->min_depth) {
+      if (loc->node == u) {
+         // We just edited a transient, so we can simplify the rest of this.
          Py_DECREF(u);
-         Py_INCREF(node);
-         return node;
+         do {
+            depth = loc->index.is_beneath;
+            loc = path->steps + depth;
+            u = loc->node;
+            --(u->numel);
+         } while (depth != path->min_depth);
+         Py_INCREF(u);
+      } else {
+         depth = loc->index.is_beneath;
+         loc = path->steps + depth;
+         node = _thamt_copy_chgcell(loc->node, loc->index, u);
+         Py_DECREF(u);
+         u = node;
+         --(u->numel);
       }
-      depth = loc->index.is_beneath;
-      loc = path->steps + depth;
-      node = u;
-      u = _thamt_copy_chgcell(loc->node, loc->index, u);
-      Py_DECREF(node);
-      --(u->numel);
    }
    // At the end of this loop, u is the replacement node, and should be ready.
    return u;
@@ -1786,18 +1795,25 @@ static inline PHAMT_t thamt_persist(PHAMT_t node)
    while (1) {
       // Upon starting this loop, we are encountering the node at the given
       // depth for the first time.
-      while (loc->node->flag_transient) {
+      if (loc->node->flag_transient) {
          // Unset the transient bit.
          loc->node->flag_transient = 0;
          // Unless we're a twig node, we need to recurse on our children.
-         if (d >= PHAMT_TWIG_DEPTH) break;
-         // We need to recurse on this node's children; add this node to the
-         // stack (path).
-         loc->index = phamt_firstcell(loc->node);
-         u = loc->node->cells[loc->index.cellindex];
-         loc = path.steps + u->addr_depth;
-         loc->index.is_beneath = d;
-         d = u->addr_depth;
+         if (d < PHAMT_TWIG_DEPTH) {
+            // We need to recurse on this node's children; add this node to the
+            // stack (path).
+            d = loc->index.is_beneath;
+            loc->index = phamt_firstcell(loc->node);
+            loc->index.is_beneath = d; // Preserve the pevious depth!
+            u = loc->node->cells[loc->index.cellindex];
+            loc = path.steps + u->addr_depth;
+            loc->index.is_beneath = d;
+            loc->node = u;
+            d = u->addr_depth;
+            continue;
+         }
+         // Otherwise, we need to pop up the stack, so we fall through to the
+         // end of this loop.
       }
       // If we reach this point, then u is either not transient, or it was a
       // twig that has now been made non-transient. Either way, we need to
@@ -1807,10 +1823,13 @@ static inline PHAMT_t thamt_persist(PHAMT_t node)
          if (d > PHAMT_TWIG_DEPTH) return node;
          // Check the next node at this depth.
          loc = path.steps + d;
+         d = loc->index.is_beneath;
          loc->index = phamt_nextcell(loc->node, loc->index);
-      } while (loc->index.is_found);
+         loc->index.is_beneath = d; // Preserve the pevious depth!
+      } while (!loc->index.is_found);
       u = loc->node->cells[loc->index.cellindex];
       loc = path.steps + u->addr_depth;
+      loc->node = u;
       loc->index.is_beneath = d;
       d = u->addr_depth;
    }
