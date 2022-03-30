@@ -11,6 +11,9 @@ from ..c_core import PHAMT, THAMT
 class TestPHAMT(TestCase):
     """Tests of the `phamt.PHAMT` type."""
 
+    MIN_INT = -(2 ** (sys.hash_info[0] - 1))
+    MAX_INT = (2 ** (sys.hash_info[0] - 1) - 1)
+
     def make_random_pair(self, n=100, minint=None, maxint=None):
         """Peforms a random set of operations on both a dict and a PHAMT and
         returns both.
@@ -23,8 +26,8 @@ class TestPHAMT(TestCase):
         """
         from random import (randint, choice)
         from weakref import ref
-        if minint is None: minint = -(2 ** (sys.hash_info[0] - 1))
-        if maxint is None: maxint = (2 ** (sys.hash_info[0] - 1) - 1)
+        if minint is None: minint = TestPHAMT.MIN_INT
+        if maxint is None: maxint = TestPHAMT.MAX_INT
         d = {}
         u = PHAMT.empty
         inserts = []
@@ -65,8 +68,8 @@ class TestPHAMT(TestCase):
         """
         from random import (randint, choice)
         from weakref import ref
-        if minint is None: minint = -9223372036854775808
-        if maxint is None: maxint = 9223372036854775807
+        if minint is None: minint = TestPHAMT.MIN_INT
+        if maxint is None: maxint = TestPHAMT.MAX_INT
         d = {}
         u = THAMT()
         inserts = []
