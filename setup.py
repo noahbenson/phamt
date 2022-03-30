@@ -14,7 +14,7 @@ setup(
     license='MIT',
     packages=['phamt', 'phamt.test'],
     ext_modules=[
-        Extension('phamt.core',
+        Extension('phamt.c_core',
                   ['phamt/phamt.c'],
                   depends=['phamt/phamt.h'],
                   include_dirs=["phamt"],

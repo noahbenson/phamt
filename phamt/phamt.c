@@ -6,7 +6,7 @@
 // This line may be commented out to enable debugging statements in the PHAMT
 // code. These are mostly sprinkled throughout the phamt.h header file in the
 // various inline functions defined there.
-//#define __PHAMT_DEBUG
+#define __PHAMT_DEBUG
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -100,7 +100,7 @@ static void py_phamtmod_free(void* mod);
 //==============================================================================
 // Static Variables
 // This section defines all the variables that are local to this file (and thus
-// to the phamt.core module's scope, in effect). These are mostly used or
+// to the phamt.c_core module's scope, in effect). These are mostly used or
 // initialized in the PyCore_Init() function below.
 
 //------------------------------------------------------------------------------
@@ -114,7 +114,7 @@ static PHAMT_t PHAMT_EMPTY_CTYPE = NULL;
 //------------------------------------------------------------------------------
 // Python Data Structures
 // These values represent data structures that define the Python-C interface for
-// the phamt.core module.
+// the phamt.c_core module.
 
 // PHAMTs ......................................................................
 // The PHAMT class methods.
@@ -153,7 +153,7 @@ static PyMappingMethods PHAMT_as_mapping = {
 // The PHAMT Type object data.
 static PyTypeObject PHAMT_type = {
    PyVarObject_HEAD_INIT(&PyType_Type, 0)
-   "phamt.core.PHAMT",
+   "phamt.c_core.PHAMT",
    .tp_doc = PyDoc_STR(PHAMT_DOCSTRING),
    .tp_basicsize = PHAMT_SIZE,
    .tp_itemsize = sizeof(void*),
@@ -173,7 +173,7 @@ static PyTypeObject PHAMT_type = {
 // The PHAMT_iter Type object data.
 static PyTypeObject PHAMT_iter_type = {
    PyVarObject_HEAD_INIT(&PyType_Type, 0)
-   .tp_name = "phamt.core.PHAMT_iter",
+   .tp_name = "phamt.c_core.PHAMT_iter",
    .tp_basicsize = sizeof(struct PHAMT_iter),
    .tp_itemsize = 0,
    .tp_dealloc = (destructor)py_phamtiter_dealloc,
@@ -219,7 +219,7 @@ static PyMappingMethods THAMT_as_mapping = {
 // The THAMT Type object data.
 static PyTypeObject THAMT_type = {
    PyVarObject_HEAD_INIT(&PyType_Type, 0)
-   "phamt.core.THAMT",
+   "phamt.c_core.THAMT",
    .tp_doc = PyDoc_STR(THAMT_DOCSTRING),
    .tp_basicsize = sizeof(struct THAMT),
    .tp_itemsize = 0,
@@ -240,7 +240,7 @@ static PyTypeObject THAMT_type = {
 // The THAMT_iter Type object data.
 static PyTypeObject THAMT_iter_type = {
    PyVarObject_HEAD_INIT(&PyType_Type, 0)
-   .tp_name = "phamt.core.THAMT_iter",
+   .tp_name = "phamt.c_core.THAMT_iter",
    .tp_basicsize = sizeof(struct THAMT_iter),
    .tp_itemsize = 0,
    .tp_dealloc = (destructor)py_thamtiter_dealloc,
@@ -253,10 +253,10 @@ static PyTypeObject THAMT_iter_type = {
    .tp_iternext = (iternextfunc)py_thamtiter_next,
 };
 
-// The phamt.core module data.
+// The phamt.c_core module data.
 static struct PyModuleDef phamt_pymodule = {
    PyModuleDef_HEAD_INIT,
-   "core",
+   "c_core",
    NULL,
    -1,
    NULL,
@@ -757,7 +757,7 @@ static PyObject *py_THAMT_getitem(PyObject *type, PyObject *item)
 }
 
 //------------------------------------------------------------------------------
-// Functions for the phamt.core Module
+// Functions for the phamt.c_core Module
 
 // Free the module when it is unloaded.
 static void py_phamtmod_free(void* mod)
@@ -770,7 +770,7 @@ static void py_phamtmod_free(void* mod)
    Py_DECREF(tmp);
 }
 // The moodule's initialization function.
-PyMODINIT_FUNC PyInit_core(void)
+PyMODINIT_FUNC PyInit_c_core(void)
 {
    PyObject* m = PyModule_Create(&phamt_pymodule);
    if (m == NULL) return NULL;
