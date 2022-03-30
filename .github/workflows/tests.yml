@@ -62,8 +62,9 @@ jobs:
         run: |
           python setup.py build
           python setup.py install
-          pip install coverage
+          #pip install coverage
           cd ~
-          coverage run -m unittest phamt.test
-      - name: Process Code Coverage
-        uses: codecov/codecov-action@v1
+          #coverage run -m unittest phamt.test
+          python run -m unittest phamt.test
+#      - name: Process Code Coverage
+#        uses: codecov/codecov-action@v1

@@ -2,6 +2,14 @@
 ####################################################################################################
 
 from setuptools import (setup, Extension)
+from sysconfig import get_config_var
+
+# Depending on the C compiler, we have different options.
+cc = get_config_var('CC')
+if cc == 'cl.exe' or cc.endswith('/cl.exe') or cc.endswith('\\cl.exe'):
+    cc_opts = ["/GL", "/std:c99"]
+else:
+    cc_opts = ["-O3", "-std=c99"]
 
 setup(
     name='phamt',
@@ -18,8 +26,8 @@ setup(
                   ['phamt/phamt.c'],
                   depends=['phamt/phamt.h'],
                   include_dirs=["phamt"],
-                  language="c99",
-                  extra_compile_args=["-O3", "-std=c99"])],
+                  language="c",
+                  extra_compile_args=cc_opts)],
     package_data={'': ['LICENSE.txt']},
     include_package_data=True,
     install_requires=[])
