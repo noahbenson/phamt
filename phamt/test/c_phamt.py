@@ -4,8 +4,9 @@
 # Declaration of tests for the (C API) PHAMT type.
 # By Noah C. Benson
 
+import sys
 from unittest import TestCase
-from ..core import PHAMT, THAMT
+from ..c_core import PHAMT, THAMT
 
 class TestPHAMT(TestCase):
     """Tests of the `phamt.PHAMT` type."""
@@ -22,8 +23,8 @@ class TestPHAMT(TestCase):
         """
         from random import (randint, choice)
         from weakref import ref
-        if minint is None: minint = -9223372036854775808
-        if maxint is None: maxint = 9223372036854775807
+        if minint is None: minint = -(2 ** (sys.hash_info[0] - 1))
+        if maxint is None: maxint = (2 ** (sys.hash_info[0] - 1) - 1)
         d = {}
         u = PHAMT.empty
         inserts = []
