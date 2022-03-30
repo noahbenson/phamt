@@ -7,8 +7,8 @@ from sysconfig import get_config_var
 
 # Depending on the C compiler, we have different options.
 class BuildExt(build_ext):
-    compile_flags = {"msvc": ["/EHsc", "/std:c99", "/GL"],
-                     "unix": ["-std=c99", "-O3"]}
+    compile_flags = {"msvc": ["/EHsc", "/std:c11", "/GL"],
+                     "unix": ["-std=c11", "-O3"]}
     def build_extensions(self):
         opts = self.compile_flags.get(self.compiler.compiler_type, [])
         for ext in self.extensions:
