@@ -18,7 +18,8 @@ setup(
                   ['phamt/phamt.c'],
                   depends=['phamt/phamt.h'],
                   include_dirs=["phamt"],
-                  extra_compile_args=["-O3"])],
+                  language="c99",
+                  extra_compile_args=["-O3", "-std=c99"])],
     package_data={'': ['LICENSE.txt']},
     include_package_data=True,
     install_requires=[])
