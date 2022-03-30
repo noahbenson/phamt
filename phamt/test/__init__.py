@@ -4,4 +4,4 @@
 # Initialization of the phamt library tests.
 # By Noah C. Benson
 
-from .c_phamt import TestPHAMT
+from .phamt import TestPHAMT

@@ -99,6 +99,8 @@ components as well.
 
 `THAMT` is also written and is reasonably well tested overall.
 
+Both `PHAMT` and `THAMT` have companion Python-only implementations (see `phamt.py_core`), but these are not intended to be fast or space-efficient; in fact, they are a couple orders of magnitude slower than the C implementations.
+
 ### Goals
 
 * `PHAMT`
@@ -113,8 +115,6 @@ components as well.
   * Write/publish a benchmarks notebook to compare runtimes performace of
     `PHAMT` and `THAMT` to other similar Python data structures.
   * Write more documentation.
-  * Implement GitHub Actions testing for a variety of computer architectures.
-  * Write a companion Python-only version.
   * Publish to PyPI.
 
 ## License

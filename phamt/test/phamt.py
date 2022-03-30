@@ -6,7 +6,6 @@
 
 import sys
 from unittest import TestCase
-from ..c_core import PHAMT, THAMT
 
 class TestPHAMT(TestCase):
     """Tests of the `phamt.PHAMT` type."""
@@ -14,7 +13,7 @@ class TestPHAMT(TestCase):
     MIN_INT = -(2 ** (sys.hash_info[0] - 1))
     MAX_INT = (2 ** (sys.hash_info[0] - 1) - 1)
 
-    def make_random_pair(self, n=100, minint=None, maxint=None):
+    def make_random_pair(self, PHAMT, THAMT, n=100, minint=None, maxint=None):
         """Peforms a random set of operations on both a dict and a PHAMT and
         returns both.
 
@@ -53,7 +52,8 @@ class TestPHAMT(TestCase):
                 self.assertTrue(v() is not None)
                 self.assertTrue(u[k] is v())
         return (u, d, inserts)
-    def make_random_pair_transient(self, n=100, minint=None, maxint=None):
+    def make_random_pair_transient(self, PHAMT, THAMT,
+                                   n=100, minint=None, maxint=None):
         """Peforms a random set of operations on both a dict and a THAMT and
         returns both.
 
@@ -73,7 +73,7 @@ class TestPHAMT(TestCase):
         d = {}
         u = THAMT()
         inserts = []
-        lns = ["START"]
+        #lns = ["START"]
         for ii in range(n):
             # What to do? assoc or dissoc?
             if len(d) == 0 or randint(0,3):
@@ -81,14 +81,14 @@ class TestPHAMT(TestCase):
                 v = set([ii])
                 vr = ref(v)
                 k = randint(minint, maxint)
-                lns.append(f"   assoc {k}")
+                #lns.append(f"   assoc {k}")
                 u[k] = v
                 d[k] = vr
                 inserts.append(vr)
             else:
                 # Choose k from in d
                 k = choice(list(d))
-                lns.append(f"   dissoc {k}")
+                #lns.append(f"   dissoc {k}")
                 del u[k]
                 del d[k]
             # Ocassionally, we persist and check the THAMT.
@@ -110,22 +110,26 @@ class TestPHAMT(TestCase):
                     self.assertTrue(k in d)
                     self.assertTrue(d[k]() is v)
             except Exception:
-                for ln in lns: print(ln)
+                #for ln in lns: print(ln)
                 raise
         return (u, d, inserts)
+    
+    def pt_test_empty(self, PHAMT, THAMT):
+        self.assertTrue(len(PHAMT.empty) == 0)
+        self.assertFalse(any(x in PHAMT.empty for x in range(100)))
     def test_empty(self):
         """Tests that `PHAMT.empty` has the correct properties.
 
         `PHAMT.empty` is the empty `PHAMT`; it should have 0 length, and it
         should not contain anything.
         """
-        self.assertTrue(len(PHAMT.empty) == 0)
-        self.assertFalse(any(x in PHAMT.empty for x in range(100)))
-    def test_iteration(self):
-        """Tests that `PHAMT` iteration works correctly.
-        """
+        from ..c_core import PHAMT, THAMT
+        self.pt_test_empty(PHAMT, THAMT)
+        from ..py_core import PHAMT, THAMT
+        self.pt_test_empty(PHAMT, THAMT)
+    def pt_test_iteration(self, PHAMT, THAMT):
         import gc
-        (u, d, assocs) = self.make_random_pair(500)
+        (u, d, assocs) = self.make_random_pair(PHAMT, THAMT, 500)
         # First, iterate over d:
         n = 0
         for (k,v) in u:
@@ -140,7 +144,14 @@ class TestPHAMT(TestCase):
         gc.collect()
         for r in assocs:
             self.assertEqual(r(), None)
-    def test_edit(self):
+    def test_iteration(self):
+        """Tests that `PHAMT` iteration works correctly.
+        """
+        from ..c_core import PHAMT, THAMT
+        self.pt_test_iteration(PHAMT, THAMT)
+        from ..py_core import PHAMT, THAMT
+        self.pt_test_iteration(PHAMT, THAMT)
+    def pt_test_edit(self, PHAMT, THAMT):
         """Tests that `PHAMT.assoc` and `PHAMT.dissoc` work correctly.
 
         The `assoc` method is used to add items to the PHAMT or to replace them.
@@ -190,17 +201,25 @@ class TestPHAMT(TestCase):
             self.assertTrue(k in p)
             self.assertTrue(p[k] == str(k))
         # A more complicated (random) test that includes dissoc.
-        (u, d, assocs) = self.make_random_pair(1000)
+        (u, d, assocs) = self.make_random_pair(PHAMT, THAMT, 1000)
         self.assertTrue(len(u) == len(d))
         for (k,v) in d.items():
             self.assertTrue(k in u)
             self.assertTrue(u[k] is d[k]())
-    def test_thamt(self):
-        """Tests that THAMT objects work correctly.
+    def test_edit(self):
+        """Tests that `PHAMT.assoc` and `PHAMT.dissoc` work correctly.
+
+        The `assoc` method is used to add items to the PHAMT or to replace them.
+        The `dissoc` method is used to remove items.
         """
+        from ..c_core import PHAMT, THAMT
+        self.pt_test_edit(PHAMT, THAMT)
+        from ..py_core import PHAMT, THAMT
+        self.pt_test_edit(PHAMT, THAMT)
+    def pt_test_thamt(self, PHAMT, THAMT):
         import gc
         for k in range(5):
-            (u, d, assocs) = self.make_random_pair_transient(500)
+            (u, d, assocs) = self.make_random_pair_transient(PHAMT, THAMT, 500)
             # First, iterate over d::
             n = 0
             for (k,v) in u:
@@ -230,10 +249,14 @@ class TestPHAMT(TestCase):
             gc.collect()
             for r in assocs:
                 self.assertEqual(r(), None)
-    def test_gc(self):
-        """Tests that PHAMT objects are garbage collectable and allow their
-        values to be garbage collected.
+    def test_thamt(self):
+        """Tests that THAMT objects work correctly.
         """
+        from ..c_core import PHAMT, THAMT
+        self.pt_test_thamt(PHAMT, THAMT)
+        from ..py_core import PHAMT, THAMT
+        self.pt_test_thamt(PHAMT, THAMT)
+    def pt_test_gc(self, PHAMT, THAMT):
         import gc
         from weakref import ref
         s = set([])
@@ -245,10 +268,18 @@ class TestPHAMT(TestCase):
         gc.collect()
         self.assertTrue(sr() is None)
         # Test using random dict/PHAMT inserts and deletes.
-        (u, d, assocs) = self.make_random_pair(500)
+        (u, d, assocs) = self.make_random_pair(PHAMT, THAMT, 500)
         # if we delete u, all the assocs should get gc'ed.
         del u
         gc.collect()
         for r in assocs:
             self.assertEqual(r(), None)
+    def test_gc(self):
+        """Tests that PHAMT objects are garbage collectable and allow their
+        values to be garbage collected.
+        """
+        from ..c_core import PHAMT, THAMT
+        self.pt_test_gc(PHAMT, THAMT)
+        from ..py_core import PHAMT, THAMT
+        self.pt_test_gc(PHAMT, THAMT)
 

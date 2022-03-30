@@ -54,7 +54,7 @@ extern "C" {
    "\n"                                                                        \
    "`phamt_obj.assoc(key, value)` returns a new `PHAMT` object that is equal\n"\
    "to `phamt_obj` with the modification that in the new object, `key` is\n"   \
-   "mapped to `value`. This is copy done efficiently using shared state, so\n" \
+   "mapped to `value`. This is copied efficiently using shared state, so\n"    \
    "that the time to perform this update is `O(log n)` and the additional\n"   \
    "space required to keep both the original and the new object in memory is\n"\
    "also `O(log n)`.\n")
@@ -63,7 +63,7 @@ extern "C" {
    "\n"                                                                        \
    "`phamt_obj.assoc(key, value)` returns a new `PHAMT` object that is equal\n"\
    "to `phamt_obj` with the modification that in the new object, `key` is\n"   \
-   "mapped to `value`. This is copy done efficiently using shared state, so\n" \
+   "mapped to `value`. This is copied efficiently using shared state, so\n"    \
    "that the time to perform this update is `O(log n)` and the additional\n"   \
    "space required to keep both the original and the new object in memory is\n"\
    "also `O(log n)`.\n")
