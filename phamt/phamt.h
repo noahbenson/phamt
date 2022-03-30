@@ -583,11 +583,11 @@ static inline hash_t lowmask_hash(hash_t bitno)
 // highmask(bitno) is equal to ~lowmask(bitno).
 static inline bits_t highmask_bits(bits_t bitno)
 {
-   return ~((BITS_ONE << bitno) - BITS_ONE);
+   return ~((BITS_ONE << bitno) - BITS_ONE) * (bitno != BITS_BITCOUNT);
 }
 static inline hash_t highmask_hash(hash_t bitno)
 {
-   return ~((HASH_ONE << bitno) - HASH_ONE);
+   return ~((HASH_ONE << bitno) - HASH_ONE) * (bitno != HASH_BITCOUNT);
 }
 // highbitdiff(id1, id2)
 // Yields the highest bit that is different between id1 and id2.
