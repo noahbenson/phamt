@@ -6,7 +6,7 @@
 // This line may be commented out to enable debugging statements in the PHAMT
 // code. These are mostly sprinkled throughout the phamt.h header file in the
 // various inline functions defined there.
-#define __PHAMT_DEBUG
+//#define __PHAMT_DEBUG
 
 #include <stdio.h>
 #include <stdlib.h>
