@@ -152,7 +152,8 @@ static PyMappingMethods PHAMT_as_mapping = {
 };
 // The PHAMT Type object data.
 static PyTypeObject PHAMT_type = {
-   PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   //PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   PyVarObject_HEAD_INIT(NULL, 0)
    "phamt.core.PHAMT",
    .tp_doc = PyDoc_STR(PHAMT_DOCSTRING),
    .tp_basicsize = PHAMT_SIZE,
@@ -172,7 +173,8 @@ static PyTypeObject PHAMT_type = {
 };
 // The PHAMT_iter Type object data.
 static PyTypeObject PHAMT_iter_type = {
-   PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   //PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   PyVarObject_HEAD_INIT(NULL, 0)
    .tp_name = "phamt.core.PHAMT_iter",
    .tp_basicsize = sizeof(struct PHAMT_iter),
    .tp_itemsize = 0,
@@ -218,7 +220,8 @@ static PyMappingMethods THAMT_as_mapping = {
 };
 // The THAMT Type object data.
 static PyTypeObject THAMT_type = {
-   PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   //PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   PyVarObject_HEAD_INIT(NULL, 0)
    "phamt.core.THAMT",
    .tp_doc = PyDoc_STR(THAMT_DOCSTRING),
    .tp_basicsize = sizeof(struct THAMT),
@@ -239,7 +242,8 @@ static PyTypeObject THAMT_type = {
 };
 // The THAMT_iter Type object data.
 static PyTypeObject THAMT_iter_type = {
-   PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   //PyVarObject_HEAD_INIT(&PyType_Type, 0)
+   PyVarObject_HEAD_INIT(NULL, 0)
    .tp_name = "phamt.core.THAMT_iter",
    .tp_basicsize = sizeof(struct THAMT_iter),
    .tp_itemsize = 0,
@@ -828,7 +832,8 @@ PyMODINIT_FUNC PyInit_core(void)
    dbgmsg("Initialized PHAMT C API.\n"
           "    PHAMT size:      %u\n"
           "    PHAMT path SIZE: %u\n",
-          (unsigned)PHAMT_SIZE, (unsigned)sizeof(PHAMT_path_t));
+          (unsigned)PHAMT_SIZE, 
+          (unsigned)sizeof(PHAMT_path_t));
    // Return the module!
    return m;
 }
