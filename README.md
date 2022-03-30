@@ -1,3 +1,5 @@
+![Build Status](https://github.com/noahbenson/phamt/actions/workflows/tests.yml/badge.svg)
+
 # phamt
 
 An optimized C implementation of a Persistent Hash Array Mapped Trie (PHAMT)
