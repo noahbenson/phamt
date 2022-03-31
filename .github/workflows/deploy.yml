@@ -65,7 +65,13 @@ jobs:
       - name: Display Python version
         run: python --version
       # Run the actual tests.
-      - name: Build Binary Distributioon
+      - name: Run Tests
+        run: |
+          python setup.py build
+          python setup.py install
+          cd ~
+          python -m unittest phamt.test
+      - name: Build Binary Distribution
         run: |
           python setup.py bdist
       - name: Build Source Distribution
