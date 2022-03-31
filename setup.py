@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 ################################################################################
 
+import os
 from setuptools import (setup, Extension)
 from setuptools.command.build_ext import build_ext
 from sysconfig import get_config_var
@@ -15,9 +16,15 @@ class BuildExt(build_ext):
             ext.extra_compile_args = opts
         build_ext.build_extensions(self)
 
+# Get the version from __init__.py
+with open(os.path.join('phamt', '__init__.py'), 'rt') as fl:
+    lns = fl.readlines()
+version = next(ln for ln in lns if "__version__ = " in ln)
+version = version.split('"')[1]
+
 setup(
     name='phamt',
-    version='0.0.1',
+    version=version,
     description='C implementation of a Persistent Hash Array Mapped Trie',
     keywords='persistent immutable functional', 
     author='Noah C. Benson',
