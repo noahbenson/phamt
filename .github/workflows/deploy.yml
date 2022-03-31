@@ -5,12 +5,26 @@
 
 name: Deploy to PyPI
 
-# We run on eithe pushes or pulls into main
+# We only run this manually.
 on:
-  # We only run this manually.
   workflow_dispatch:
 
+# Four job categores:
+# (1) deploy-source
+#     Just deploys the source distribution after running tests on ubuntu.
+# (2) deploy-nonlinux
+#     This is a matrix job that deploys for Python 3.6-3.10 on windows and mac
+#     for x64 architecture (and x86 also for Windows).
+# (3) deploy-linux-x86_64
+#     This is a non-matrix job that uses the manylinux docker images to generate
+#     binary distributions for x86_64 Linux distributions. This uses the script
+#     build-wheels.sh, which gets run inside the manylinux docker, to build and
+#     repair the binary wheels for CPython 3.6-3.10 as well as some PyPy builds
+#     as well.
+# (4) deploy-linux-i686
+#     Like deploy-linux-x86_64, except for i686 architectures.
 jobs:
+  #-----------------------------------------------------------------------------
   deploy-source:
     name: Source
     runs-on: ubuntu-latest
@@ -22,29 +36,30 @@ jobs:
       # Check out the repository (goes to $GITHUB_WORKSPACE)
       - name: Checkout
         uses: actions/checkout@v2
-        with:
-          fetch-depth: '2'
       # Setup the Python Environment.
       - name: Setup Python Environment
         uses: actions/setup-python@v3
         with:
           python-version: 3
           architecture: x64
+      # We need to install twine also for uploading to PyPI.
       - name: Install Twine
         run: |
           pip install twine
-      # Run the actual tests.
+      # Make sure the tests pass before we upload anything.
       - name: Run Tests
         run: |
           python setup.py build
           python setup.py install
           cd ~
           python -m unittest phamt.test
+      # Go ahead and build and deploy.
       - name: Build and Upload Source Distribution
         run: |
           rm dist/*
           python setup.py sdist
           twine upload -r $TWINE_DEST dist/phamt-*.tar.gz
+  #-----------------------------------------------------------------------------
   deploy-nonlinux:
     name: ${{matrix.os}} [${{matrix.arch}}] - py${{matrix.version}}
     runs-on: ${{ matrix.os }}
@@ -75,8 +90,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        with:
-          fetch-depth: '2'
       - name: Setup Python Environment
         uses: actions/setup-python@v3
         with:
@@ -99,12 +112,15 @@ jobs:
           rm dist/*
           python setup.py bdist_wheel
       - name: Upload Binary Distribution
-        # It would be nice to use $TWINE_DEST here, but this fails in windows:
+        # It would be nice to use $TWINE_DEST here, but this fails in windows.
+        # Also, FWIW, this code is fine, but `twine upload -r pypi dist/*.whl`
+        # fails on Windows.
         run: |
           cd dist
           twine upload -r pypi *.whl
+  #-----------------------------------------------------------------------------
   deploy-linux-x86_64:
-    name: Linux [x86_64] - All
+    name: ubuntu-latest [x86_64] - all
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
@@ -114,8 +130,6 @@ jobs:
       # Check out the repository (goes to $GITHUB_WORKSPACE)
       - name: Checkout
         uses: actions/checkout@v2
-        with:
-          fetch-depth: '2'
       - name: Setup Python Environment
         uses: actions/setup-python@v3
         with:
@@ -131,8 +145,9 @@ jobs:
       - name: Upload Binary Distribution
         run: |
           twine upload -r $TWINE_DEST wheels/*.whl
+  #-----------------------------------------------------------------------------
   deploy-linux-i686:
-    name: Linux [i686] - All
+    name: ubuntu-latest [i686] - all
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
@@ -142,8 +157,6 @@ jobs:
       # Check out the repository (goes to $GITHUB_WORKSPACE)
       - name: Checkout
         uses: actions/checkout@v2
-        with:
-          fetch-depth: '2'
       - name: Setup Python Environment
         uses: actions/setup-python@v3
         with:
