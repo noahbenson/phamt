@@ -12,7 +12,7 @@ on:
 
 jobs:
   deploy:
-    name: ${{matrix.version}}/${{matrix.os}}/${{matrix.arch}} - ${{github.event_name}}
+    name: ${{matrix.version}}/${{matrix.os}}/${{matrix.arch}} - Deploy
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -35,6 +35,9 @@ jobs:
           - {"os": "windows-latest", "arch": "x86", "version": "3.9"}
           - {"os": "windows-latest", "arch": "x86", "version": "3.10"}
           - {"os": "windows-latest", "arch": "x86", "version": "3"}
+    # Require that the tests pass.
+    uses:
+      noahbenson/phamt/.github/workflows/.yml@${{ steps.getbranch.outputs.branch }}
     # The job environment.
     env:
       OS: ${{ matrix.os }}
@@ -52,8 +55,6 @@ jobs:
         shell: bash
         run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
         id: getbranch
-      - name: Require Tests
-        uses: noahbenson/phamt/.github/workflows/.yml@${{ steps.getbranch.outputs.branch }}
       # Setup the Python Environment.
       - name: Setup Python Environment
         uses: actions/setup-python@v3
@@ -71,8 +72,8 @@ jobs:
         if: matrix.os == "ubuntu-latest" && matrix.version == "3" && matrix.arch == "x64"
         run: |
           python setup.py sdist
-      - name: Upload 
-        run: |
-          twine upload --repository testpypi dist/*
-#      - name: Process Code Coverage
-#        uses: codecov/codecov-action@v1
+      - name: Upload to PyPI
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository_url: https://test.pypi.org/legacy/
