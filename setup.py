@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-####################################################################################################
+################################################################################
 
 from setuptools import (setup, Extension)
 from setuptools.command.build_ext import build_ext
@@ -15,16 +15,34 @@ class BuildExt(build_ext):
             ext.extra_compile_args = opts
         build_ext.build_extensions(self)
 
-
 setup(
     name='phamt',
     version='0.0.1',
     description='C implementation of a Persistent Hash Array Mapped Trie',
-    keywords='persistent immutable functional',
+    keywords='persistent immutable functional', 
     author='Noah C. Benson',
     author_email='nben@uw.edu',
     url='https://github.com/noahbenson/phamt/',
+    download_url='https://github.com/noahbenson/phamt/',
     license='MIT',
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+        'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
+        'Operating System :: Microsoft :: Windows',
+        'Operating System :: POSIX',
+        'Operating System :: Unix',
+        'Operating System :: MacOS',
+        'Programming Language :: C',
+        'Programming Language :: Python :: Implementation :: CPython',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Topic :: Software Development',
+        'Topic :: Software Development :: Libraries',
+        'Topic :: Software Development :: Libraries :: Python Modules'],
     packages=['phamt', 'phamt.test'],
     ext_modules=[
         Extension('phamt.c_core',
