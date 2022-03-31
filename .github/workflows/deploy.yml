@@ -101,7 +101,7 @@ jobs:
         run: |
           twine upload -r testpypi dist/*.whl
   deploy-linux-x86_64:
-    name: Build & Deploy Linux Binaries [x86_64]
+    name: Deploy Linux [x86_64]
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
@@ -123,12 +123,12 @@ jobs:
       - name: Build Wheels
         uses: docker://quay.io/pypa/manylinux_2_24_x86_64
         with:
-          args: bash /work/build-wheels.sh x86_64
+          args: bash /github/home/build-wheels.sh x86_64
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi wheels/*.whl
   deploy-linux-i686:
-    name: Build & Deploy Linux Binaries [i686]
+    name: Deploy Linux [i686]
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
@@ -150,7 +150,7 @@ jobs:
       - name: Build Wheels
         uses: docker://quay.io/pypa/manylinux_2_24_i686
         with:
-          args: bash /work/build-wheels.sh i686
+          args: bash /github/home/build-wheels.sh i686
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi wheels/*.whl

@@ -2,7 +2,7 @@
 
 # This script is intended for use inside the manylinux docker image in order to
 # build the binary wheels for this library.
-# The phamt directory should be mounted in /work.
+# The phamt directory should be mounted in $WORK.
 
 PLAT="$1"
 WORK=/github/home
