@@ -132,10 +132,8 @@ jobs:
       - name: Build Wheels
         uses: docker://quay.io/pypa/manylinux_2_24_${{matrix.arch}}
         with:
-          env:
-            PLAT: ${{matrix.arch}}
           volumes: ${{github.workspace}}:/work
-          args: bash /work/build-wheels.sh
+          args: bash /work/build-wheels.sh ${{matrix.arch}}
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi wheels/*.whl

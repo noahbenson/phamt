@@ -4,6 +4,8 @@
 # build the binary wheels for this library.
 # The phamt directory should be mounted in /work.
 
+PLAT="$1"
+
 # Compile wheels
 mkdir -p /root/tmpwheels
 for PYBIN in /opt/python/*/bin
