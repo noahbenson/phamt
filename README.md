@@ -1,4 +1,5 @@
 ![Build Status](https://github.com/noahbenson/phamt/actions/workflows/tests.yml/badge.svg)
+[![PyPI version](https://badge.fury.io/py/phamt.svg)](https://badge.fury.io/py/phamt)
 
 # phamt
 
@@ -83,6 +84,15 @@ key: 10; value: 10
 
 # THAMTs can be efficiently turned into PHAMTs.
 >>> edited_items = tmp.persistent()
+```
+
+## Installation
+
+The `phamt` library is available on [PyPI](https://pypi.org/project/phamt/) in both source and binary formats and can be installed using `pip`:
+
+```bash
+# Install phamt:
+> pip install phamt
 ```
 
 ## Current Status
