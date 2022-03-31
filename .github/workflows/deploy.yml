@@ -101,7 +101,7 @@ jobs:
       - name: Upload Binary Distribution
         run: |
           cd dist
-          twine upload -r $TWINE_DEST *.whl
+          twine upload -r testpypi *.whl
   deploy-linux-x86_64:
     name: Linux [x86_64] - All
     runs-on: ubuntu-latest
