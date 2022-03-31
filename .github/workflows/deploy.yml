@@ -82,11 +82,11 @@ jobs:
         if: matrix.arch != 'source'
         run: |
           rm dist/*
-          python setup.py bdist
-          twine upload -r testpypi dist/*
+          python setup.py bdist_wheel
+          twine upload -r testpypi dist/*.whl
       - name: Build and Upload Source Distribution
         if: matrix.arch == 'source'
         run: |
           rm dist/*
           python setup.py sdist
-          twine upload -r testpypi dist/*
+          twine upload -r testpypi dist/phamt-*.*.[^.].tar.gz
