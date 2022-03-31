@@ -41,7 +41,7 @@ jobs:
       ARCH: ${{ matrix.arch }}
       PYTHON: ${{ matrix.version }}
       TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ TEST_PYPI_API_TOKEN }}
+      TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
     # The steps in the job.
     steps:
       # Check out the repository (goes to $GITHUB_WORKSPACE)
