@@ -70,7 +70,7 @@ jobs:
           python -m unittest phamt.test
       - name: Build Binary Distribution
         run: |
-          python setup.py bdist_wheel
+          python setup.py bdist
       - name: Build Source Distribution
         if: matrix.os == 'ubuntu-latest' && matrix.version == '3' && matrix.arch == 'x64'
         run: |
