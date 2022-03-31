@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-      TWINE_DEST: testpypi
+      TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      TWINE_DEST: pypi
     steps:
       # Check out the repository (goes to $GITHUB_WORKSPACE)
       - name: Checkout
@@ -70,8 +70,8 @@ jobs:
           - {"os":"windows-latest", "arch":"x86", "version":"3.10"}
     env:
       TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-      TWINE_DEST: testpypi
+      TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      TWINE_DEST: pypi
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -99,16 +99,17 @@ jobs:
           rm dist/*
           python setup.py bdist_wheel
       - name: Upload Binary Distribution
+        # It would be nice to use $TWINE_DEST here, but this fails in windows:
         run: |
           cd dist
-          twine upload -r testpypi *.whl
+          twine upload -r pypi *.whl
   deploy-linux-x86_64:
     name: Linux [x86_64] - All
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-      TWINE_DEST: testpypi
+      TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      TWINE_DEST: pypi
     steps:
       # Check out the repository (goes to $GITHUB_WORKSPACE)
       - name: Checkout
@@ -135,8 +136,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-      TWINE_DEST: testpypi
+      TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      TWINE_DEST: pypi
     steps:
       # Check out the repository (goes to $GITHUB_WORKSPACE)
       - name: Checkout
