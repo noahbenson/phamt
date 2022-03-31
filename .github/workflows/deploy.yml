@@ -123,7 +123,7 @@ jobs:
       - name: Build Wheels
         uses: docker://quay.io/pypa/manylinux_2_24_x86_64
         with:
-          args: bash /github/home/build-wheels.sh x86_64
+          args: bash /github/workspace/build-wheels.sh x86_64
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi wheels/*.whl
@@ -150,7 +150,7 @@ jobs:
       - name: Build Wheels
         uses: docker://quay.io/pypa/manylinux_2_24_i686
         with:
-          args: bash /github/home/build-wheels.sh i686
+          args: bash /github/workspace/build-wheels.sh i686
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi wheels/*.whl

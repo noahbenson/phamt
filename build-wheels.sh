@@ -5,7 +5,7 @@
 # The phamt directory should be mounted in $WORK.
 
 PLAT="$1"
-WORK=/github/home
+WORK=/github/workspace
 
 # Compile wheels
 mkdir -p /root/tmpwheels
