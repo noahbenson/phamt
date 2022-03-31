@@ -84,7 +84,6 @@ jobs:
         run: |
           pip install twine
       - name: Install Wheel
-        if: matrix.type == 'b'
         run: |
           pip install wheel
       - name: Run Tests
