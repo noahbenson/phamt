@@ -12,7 +12,7 @@ on:
 
 jobs:
   deploy:
-    name: ${{matrix.version}}/${{matrix.os}}/${{matrix.arch}} - Deploy
+    name: ${{matrix.version}}/${{matrix.os}}/${{matrix.arch}} [${{matrix.type}}]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -80,11 +80,20 @@ jobs:
           python setup.py install
           cd ~
           python -m unittest phamt.test
-      - name: Build and Upload Binary Distribution
+      - name: Build Binary Distribution
         if: matrix.type == 'b'
         run: |
           rm dist/*
           python setup.py bdist_wheel
+      - name: AuditWheel Binary Distribution
+        if: matrix.type == 'b' && matrix.os == 'ubuntu-latest'
+        run: |
+          pip install auditwheel
+          mv dist orig_dist
+          auditwheel repair -w dist/ orig_dist/*.whl
+      - name: Upload Binary Distribution
+        if: matrix.type == 'b'
+        run: |
           twine upload -r testpypi dist/*.whl
       - name: Build and Upload Source Distribution
         if: matrix.type == 's'
