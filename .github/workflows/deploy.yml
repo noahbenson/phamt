@@ -72,7 +72,7 @@ jobs:
         run: |
           python setup.py bdist
       - name: Build Source Distribution
-        if: matrix.os == "ubuntu-latest" && matrix.version == "3" && matrix.arch == "x64"
+        if: matrix.os == 'ubuntu-latest' && matrix.version == '3' && matrix.arch == 'x64'
         run: |
           python setup.py sdist
       - name: Upload to PyPI
