@@ -11,11 +11,44 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
-    name: ${{matrix.version}}/${{matrix.os}}/${{matrix.arch}} [${{matrix.type}}]
+  deploy-source:
+    name: Build & Deploy Source Distribution
+    runs-on: ubuntu-latest
+    env:
+      TWINE_USERNAME: __token__
+      TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+    steps:
+      # Check out the repository (goes to $GITHUB_WORKSPACE)
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: '2'
+      # Setup the Python Environment.
+      - name: Setup Python Environment
+        uses: actions/setup-python@v3
+        with:
+          python-version: 3
+          architecture: x64
+      - name: Install Twine
+        run: |
+          pip install twine
+      # Run the actual tests.
+      - name: Run Tests
+        run: |
+          python setup.py build
+          python setup.py install
+          cd ~
+          python -m unittest phamt.test
+      - name: Build and Upload Source Distribution
+        run: |
+          rm dist/*
+          python setup.py sdist
+          twine upload -r testpypi dist/phamt-*.*.[^.].tar.gz
+  deploy-nonlinux:
+    name: Build & Deploy ${{matrix.os}}, ${{matrix.version}}, ${{matrix.arch}}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         version:
           - '3.6'
@@ -24,40 +57,24 @@ jobs:
           - '3.9'
           - '3.10'
         os:
-          - ubuntu-latest
           - windows-latest
           - macos-latest
         arch:
           - 'x64'
-        type:
-          - 'b'
         include:
-          - {"os":"windows-latest", "arch":"x86", "version":"3.6",  "type":"b"}
-          - {"os":"windows-latest", "arch":"x86", "version":"3.7",  "type":"b"}
-          - {"os":"windows-latest", "arch":"x86", "version":"3.8",  "type":"b"}
-          - {"os":"windows-latest", "arch":"x86", "version":"3.9",  "type":"b"}
-          - {"os":"windows-latest", "arch":"x86", "version":"3.10", "type":"b"}
-          - {"os":"ubuntu-latest",  "arch":"x64", "version":"3",    "type":"s"}
-    # The job environment.
+          - {"os":"windows-latest", "arch":"x86", "version":"3.6"}
+          - {"os":"windows-latest", "arch":"x86", "version":"3.7"}
+          - {"os":"windows-latest", "arch":"x86", "version":"3.8"}
+          - {"os":"windows-latest", "arch":"x86", "version":"3.9"}
+          - {"os":"windows-latest", "arch":"x86", "version":"3.10"}
     env:
-      OS: ${{ matrix.os }}
-      ARCH: ${{ matrix.arch }}
-      PYTHON: ${{ matrix.version }}
       TWINE_USERNAME: __token__
       TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-    # The steps in the job.
     steps:
-      # Check out the repository (goes to $GITHUB_WORKSPACE)
       - name: Checkout
         uses: actions/checkout@v2
         with:
           fetch-depth: '2'
-      # Get the brarnch name.
-      - name: Extract Branch Name
-        shell: bash
-        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
-        id: getbranch
-      # Setup the Python Environment.
       - name: Setup Python Environment
         uses: actions/setup-python@v3
         with:
@@ -70,10 +87,6 @@ jobs:
         if: matrix.type == 'b'
         run: |
           pip install wheel
-      # Log the Python Version
-      - name: Display Python version
-        run: python --version
-      # Run the actual tests.
       - name: Run Tests
         run: |
           python setup.py build
@@ -81,23 +94,48 @@ jobs:
           cd ~
           python -m unittest phamt.test
       - name: Build Binary Distribution
-        if: matrix.type == 'b'
         run: |
           rm dist/*
           python setup.py bdist_wheel
-      - name: AuditWheel Binary Distribution
-        if: matrix.type == 'b' && matrix.os == 'ubuntu-latest'
-        run: |
-          pip install auditwheel
-          mv dist orig_dist
-          auditwheel repair -w dist/ orig_dist/*.whl
       - name: Upload Binary Distribution
-        if: matrix.type == 'b'
         run: |
           twine upload -r testpypi dist/*.whl
-      - name: Build and Upload Source Distribution
-        if: matrix.type == 's'
+  deploy-linux:
+    name: Build & Deploy Linux Binaries 
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        arch:
+          - x86_64
+          - i686
+          - aarch64
+          - ppc64le
+          - s390x
+    env:
+      TWINE_USERNAME: __token__
+      TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+    steps:
+      # Check out the repository (goes to $GITHUB_WORKSPACE)
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: '2'
+      - name: Setup Python Environment
+        uses: actions/setup-python@v3
+        with:
+          python-version: 3
+          architecture: x64
+      - name: Install Twine
         run: |
-          rm dist/*
-          python setup.py sdist
-          twine upload -r testpypi dist/phamt-*.*.[^.].tar.gz
+          pip install twine
+      - name: Build Wheels
+        uses: docker://quay.io/pypa/manylinux_2_24_${{matrix.arch}}
+        with:
+          env:
+            PLAT: ${{matrix.arch}}
+          volumes: ${{github.workspace}}:/work
+          args: bash /work/build-wheels.sh
+      - name: Upload Binary Distribution
+        run: |
+          twine upload -r testpypi wheels/*.whl
