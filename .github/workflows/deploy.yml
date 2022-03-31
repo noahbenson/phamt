@@ -106,12 +106,17 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        arch:
-          - x86_64
-          - i686
-          - aarch64
-          - ppc64le
-          - s390x
+        includes:
+          - arch: x86_64
+            docker: docker://quay.io/pypa/manylinux_2_24_x86_64
+          - arch: i686
+            docker: docker://quay.io/pypa/manylinux_2_24_i686
+          - arch: aarch64
+            docker: docker://quay.io/pypa/manylinux_2_24_aarch64
+          - arch: ppc64le
+            docker: docker://quay.io/pypa/manylinux_2_24_ppc64le
+          - arch: s390x
+            docker: docker://quay.io/pypa/manylinux_2_24_s390x
     env:
       TWINE_USERNAME: __token__
       TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
@@ -130,7 +135,7 @@ jobs:
         run: |
           pip install twine
       - name: Build Wheels
-        uses: docker://quay.io/pypa/manylinux_2_24_${{matrix.arch}}
+        uses: ${{ matrix.docker }}
         with:
           volumes: ${{github.workspace}}:/work
           args: bash /work/build-wheels.sh ${{matrix.arch}}
