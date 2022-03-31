@@ -70,13 +70,12 @@ jobs:
           python -m unittest phamt.test
       - name: Build Binary Distribution
         run: |
-          python setup.py bdist
+          python setup.py bdist_wheel
       - name: Build Source Distribution
         if: matrix.os == 'ubuntu-latest' && matrix.version == '3' && matrix.arch == 'x64'
         run: |
           python setup.py sdist
       - name: Upload to PyPI
-        uses: pypa/gh-action-pypi-publish@master
-        with:
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          repository_url: https://test.pypi.org/legacy/
+        run: |
+          pip install twine
+          twine upload dist/*
