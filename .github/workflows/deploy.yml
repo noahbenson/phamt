@@ -100,23 +100,9 @@ jobs:
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi dist/*.whl
-  deploy-linux:
+  deploy-linux-x86_64:
     name: Build & Deploy Linux Binaries 
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        includes:
-          - arch: x86_64
-            docker: docker://quay.io/pypa/manylinux_2_24_x86_64
-          - arch: i686
-            docker: docker://quay.io/pypa/manylinux_2_24_i686
-          - arch: aarch64
-            docker: docker://quay.io/pypa/manylinux_2_24_aarch64
-          - arch: ppc64le
-            docker: docker://quay.io/pypa/manylinux_2_24_ppc64le
-          - arch: s390x
-            docker: docker://quay.io/pypa/manylinux_2_24_s390x
     env:
       TWINE_USERNAME: __token__
       TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
@@ -135,10 +121,10 @@ jobs:
         run: |
           pip install twine
       - name: Build Wheels
-        uses: ${{ matrix.docker }}
+        uses: docker://quay.io/pypa/manylinux_2_24_x86_64
         with:
           volumes: ${{github.workspace}}:/work
-          args: bash /work/build-wheels.sh ${{matrix.arch}}
+          args: bash /work/build-wheels.sh x86_64
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi wheels/*.whl
