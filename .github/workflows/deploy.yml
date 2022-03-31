@@ -40,6 +40,8 @@ jobs:
       OS: ${{ matrix.os }}
       ARCH: ${{ matrix.arch }}
       PYTHON: ${{ matrix.version }}
+      TWINE_USERNAME: __token__
+      TWINE_PASSWORD: ${{ TEST_PYPI_API_TOKEN }}
     # The steps in the job.
     steps:
       # Check out the repository (goes to $GITHUB_WORKSPACE)
@@ -78,4 +80,4 @@ jobs:
       - name: Upload to PyPI
         run: |
           pip install twine
-          twine upload dist/*
+          twine upload -r testpypi dist/*
