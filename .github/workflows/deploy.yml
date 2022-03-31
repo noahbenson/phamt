@@ -3,7 +3,7 @@
 # GitHub Actions Workflow for deploying phamt to PyPI.
 # by Noah C. Benson
 
-name: Deploy
+name: Deploy to PyPI
 
 # We run on eithe pushes or pulls into main
 on:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   deploy-source:
-    name: Build & Deploy Source Distribution
+    name: Source
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
@@ -45,7 +45,7 @@ jobs:
           python setup.py sdist
           twine upload -r testpypi dist/phamt-*.*.[^.].tar.gz
   deploy-nonlinux:
-    name: Build & Deploy ${{matrix.os}}, ${{matrix.version}}, ${{matrix.arch}}
+    name: ${{matrix.os}} [${{matrix.arch}}] - py${{matrix.version}}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
@@ -101,7 +101,7 @@ jobs:
         run: |
           twine upload -r testpypi dist/*.whl
   deploy-linux-x86_64:
-    name: Deploy Linux [x86_64]
+    name: Linux [x86_64] - All
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
@@ -128,7 +128,7 @@ jobs:
         run: |
           twine upload -r testpypi wheels/*.whl
   deploy-linux-i686:
-    name: Deploy Linux [i686]
+    name: Linux [i686] - All
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
@@ -151,33 +151,6 @@ jobs:
         uses: docker://quay.io/pypa/manylinux_2_24_i686
         with:
           args: bash /github/workspace/build-wheels.sh manylinux_2_24_i686
-      - name: Upload Binary Distribution
-        run: |
-          twine upload -r testpypi wheels/*.whl
-  deploy-linux-aarch64:
-    name: Deploy Linux [i686]
-    runs-on: ubuntu-latest
-    env:
-      TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-    steps:
-      # Check out the repository (goes to $GITHUB_WORKSPACE)
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: '2'
-      - name: Setup Python Environment
-        uses: actions/setup-python@v3
-        with:
-          python-version: 3
-          architecture: x64
-      - name: Install Twine
-        run: |
-          pip install twine
-      - name: Build Wheels
-        uses: docker://quay.io/pypa/manylinux_2_24_aarch64
-        with:
-          args: bash /github/workspace/build-wheels.sh manylinux_2_24_aarch64
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi wheels/*.whl
