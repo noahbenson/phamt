@@ -10,5 +10,5 @@
 try:              from .c_core  import (PHAMT, THAMT)
 except Exception: from .py_core import (PHAMT, THAMT)
 
-__version__ = "0.0.8"
+__version__ = "0.0.9"
 

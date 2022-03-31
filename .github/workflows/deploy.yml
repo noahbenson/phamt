@@ -100,13 +100,15 @@ jobs:
           python setup.py bdist_wheel
       - name: Upload Binary Distribution
         run: |
-          twine upload -r $TWINE_DEST dist/*.whl
+          cd dist
+          twine upload -r $TWINE_DEST *.whl
   deploy-linux-x86_64:
     name: Linux [x86_64] - All
     runs-on: ubuntu-latest
     env:
       TWINE_USERNAME: __token__
       TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      TWINE_DEST: testpypi
     steps:
       # Check out the repository (goes to $GITHUB_WORKSPACE)
       - name: Checkout
