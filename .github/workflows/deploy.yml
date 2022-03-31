@@ -123,7 +123,7 @@ jobs:
       - name: Build Wheels
         uses: docker://quay.io/pypa/manylinux_2_24_x86_64
         with:
-          args: bash /github/workspace/build-wheels.sh x86_64
+          args: bash /github/workspace/build-wheels.sh manylinux_2_24_x86_64
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi wheels/*.whl
@@ -150,7 +150,34 @@ jobs:
       - name: Build Wheels
         uses: docker://quay.io/pypa/manylinux_2_24_i686
         with:
-          args: bash /github/workspace/build-wheels.sh i686
+          args: bash /github/workspace/build-wheels.sh manylinux_2_24_i686
+      - name: Upload Binary Distribution
+        run: |
+          twine upload -r testpypi wheels/*.whl
+  deploy-linux-aarch64:
+    name: Deploy Linux [i686]
+    runs-on: ubuntu-latest
+    env:
+      TWINE_USERNAME: __token__
+      TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+    steps:
+      # Check out the repository (goes to $GITHUB_WORKSPACE)
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: '2'
+      - name: Setup Python Environment
+        uses: actions/setup-python@v3
+        with:
+          python-version: 3
+          architecture: x64
+      - name: Install Twine
+        run: |
+          pip install twine
+      - name: Build Wheels
+        uses: docker://quay.io/pypa/manylinux_2_24_aarch64
+        with:
+          args: bash /github/workspace/build-wheels.sh manylinux_2_24_aarch64
       - name: Upload Binary Distribution
         run: |
           twine upload -r testpypi wheels/*.whl
