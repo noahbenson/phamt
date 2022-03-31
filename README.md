@@ -125,7 +125,6 @@ Both `PHAMT` and `THAMT` have companion Python-only implementations (see `phamt.
   * Write/publish a benchmarks notebook to compare runtimes performace of
     `PHAMT` and `THAMT` to other similar Python data structures.
   * Write more documentation.
-  * Publish to PyPI.
 
 ## License
 
