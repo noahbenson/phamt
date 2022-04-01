@@ -12,6 +12,7 @@ immutable/persistent data structures. It is intended for use in building more
 user-friendly persistent types such as persistent dictionaries and persistent
 lists.
 
+
 ## Example Usage
 
 ### PHAMT Usage
@@ -86,6 +87,7 @@ key: 10; value: 10
 >>> edited_items = tmp.persistent()
 ```
 
+
 ## Installation
 
 The `phamt` library is available on [PyPI](https://pypi.org/project/phamt/) in both source and binary formats and can be installed using `pip`:
@@ -95,12 +97,8 @@ The `phamt` library is available on [PyPI](https://pypi.org/project/phamt/) in b
 > pip install phamt
 ```
 
+
 ## Current Status
-
-The `phamt` library is currently under development. This section breaks down
-the features and goals of the project and where they stand.
-
-### Tested Features
 
 `PHAMT` is working and is reasonably well tested overall. This includes updating
 PHAMTs, iterating over PHAMTs, creating PHAMTs, and querying PHAMTs. The current
@@ -111,20 +109,6 @@ components as well.
 
 Both `PHAMT` and `THAMT` have companion Python-only implementations (see `phamt.py_core`), but these are not intended to be fast or space-efficient; in fact, they are a couple orders of magnitude slower than the C implementations.
 
-### Goals
-
-* `PHAMT`
-  * `PHAMT.from_list(q)` (or `from_iter`?) should efficiently create a `PHAMT`
-    whose keys are the numbers `0` through `len(q)-1` and whose values are the
-    elements in `q`. This can be done slightly more efficiently using a
-    bottom-up approach than can be done using transients (though they are likely
-    almost as fast).
-  * `PHAMT(d)` for a `dict` with integer keys, `d`, should efficiently allocate
-    a `PHAMT` with matching keys/values as `d`.
-* General
-  * Write/publish a benchmarks notebook to compare runtimes performace of
-    `PHAMT` and `THAMT` to other similar Python data structures.
-  * Write more documentation.
 
 ## License
 
