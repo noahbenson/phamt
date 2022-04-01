@@ -340,6 +340,24 @@ class PHAMT(Mapping):
         allocations.
         """
         return THAMT(self)
+    @staticmethod
+    def from_iter(obj, k0=0):
+        """Constructs a PHAMT object from a sequence or iterable of values.
+
+        `PHAMT.from_iter(items)` returns a `PHAMT` object whose keys are the
+        integers `0, 1 ... len(items)` and whose values are the elements of the
+        iterable `items` in iteration order. This is performed with minimal
+        allocations, so it should be more efficient than building the PHAMT from
+        scratch.
+
+        `PHAMT.from_iter(items, k0)` returns a `PHAMT` object whose keys are the
+        integers `k0, k0+1 ... k0+len(items)`.
+        """
+        thamt = THAMT(PHAMT.empty)
+        for obj in iter(obj):
+            thamt[k0] = obj
+            k0 += 1
+        return thamt.persistent()
         
 PHAMT.empty = PHAMT(0, PHAMT_ROOT_DEPTH, 0, (None,)*PHAMT_NCELLS)
 

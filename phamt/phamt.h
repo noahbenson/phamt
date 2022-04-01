@@ -47,7 +47,7 @@ extern "C" {
    " * by using `phamt_obj.assoc(k,v)` or `phamt_obj.dissoc(k)` on existing\n" \
    "   `PHAMT` objects, such as the `PHAMT.empty` object, which represents\n"  \
    "   an empty `PHAMT`;\n"                                                    \
-   " * by supplying the `PHAMT.from_list(iter_of_values)` with a list of\n"    \
+   " * by supplying the `PHAMT.from_iter(iter_of_values)` with a list of\n"    \
    "   values, which are assigned the keys `0`, `1`, `2`, etc.\n"              )
 #define PHAMT_ASSOC_DOCSTRING (                                                \
    "Returns a new `PHAMT` object with an additional association.\n"            \
@@ -67,14 +67,17 @@ extern "C" {
    "that the time to perform this update is `O(log n)` and the additional\n"   \
    "space required to keep both the original and the new object in memory is\n"\
    "also `O(log n)`.\n")
-#define PHAMT_FROM_LIST_DOCSTRING (                                            \
+#define PHAMT_FROM_ITER_DOCSTRING (                                            \
    "Constructs a PHAMT object from a sequence or iterable of values.\n"        \
    "\n"                                                                        \
-   "`PHAMT.from_list(items)` returns a `PHAMT` object whose keys are the\n"    \
+   "`PHAMT.from_iter(items)` returns a `PHAMT` object whose keys are the\n"    \
    "integers `0, 1 ... len(items)` and whose values are the elements of the\n" \
    "iterable `items` in iteration order. This is performed with minimal\n"     \
    "allocations, so it should be more efficient than building the PHAMT from\n"\
-   "scratch.\n")
+   "scratch.\n"                                                                \
+   "\n"                                                                        \
+   "`PHAMT.from_iter(items, k0)` returns a `PHAMT` object whose keys are the\n"\
+   "integers `k0, k0+1 ... k0+len(items)`.\n")
 #define PHAMT_TRANSIENT_DOCSTRING (                                            \
    "Returns an equivalent transient HAMT (`THAMT`) object.\n"                  \
    "\n"                                                                        \

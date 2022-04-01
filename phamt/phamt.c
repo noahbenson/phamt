@@ -36,8 +36,6 @@ static void       py_phamt_dealloc(PHAMT_t self);
 static int        py_phamt_traverse(PHAMT_t self, visitproc visit, void *arg);
 static int        py_phamt_clear(PHAMT_t self);
 static PyObject*  py_phamt_repr(PHAMT_t self);
-static PyObject*  py_phamt_new(PyTypeObject *subtype, PyObject *args,
-                               PyObject *kwds);
 
 //------------------------------------------------------------------------------
 // PHAMT_iter Methods
@@ -54,7 +52,7 @@ static PyObject* py_phamtiter_next(PHAMT_iter_t self);
 // PHAMT-type methods (i.e., classmethods)
 
 static PyObject* py_PHAMT_getitem(PyObject *type, PyObject *item);
-static PyObject* py_PHAMT_from_list(PyObject* self, PyObject *const *args,
+static PyObject* py_PHAMT_from_iter(PyObject* self, PyObject *const *args,
                                     Py_ssize_t nargs);
 
 //------------------------------------------------------------------------------
@@ -127,8 +125,9 @@ static PyMethodDef PHAMT_methods[] = {
                          PyDoc_STR(PHAMT_DISSOC_DOCSTRING)},
    {"transient",         (PyCFunction)py_phamt_transient, METH_NOARGS,
                          PyDoc_STR(PHAMT_TRANSIENT_DOCSTRING)},
-   {"from_list",         (PyCFunction)py_PHAMT_from_list, METH_FASTCALL,
-                         PyDoc_STR(PHAMT_FROM_LIST_DOCSTRING)},
+   {"from_iter",         (PyCFunction)py_PHAMT_from_iter,
+                         METH_FASTCALL|METH_CLASS,
+                         PyDoc_STR(PHAMT_FROM_ITER_DOCSTRING)},
    {NULL, NULL, 0, NULL}
 };
 // The PHAMT implementation of the sequence interface.
@@ -167,7 +166,6 @@ static PyTypeObject PHAMT_type = {
    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
    .tp_traverse = (traverseproc)py_phamt_traverse,
    .tp_clear = (inquiry)py_phamt_clear,
-   .tp_new = (newfunc)py_phamt_new,
    .tp_repr = (reprfunc)py_phamt_repr,
    .tp_str = (reprfunc)py_phamt_repr
 };
@@ -447,17 +445,11 @@ static PyObject* py_phamt_repr(PHAMT_t self)
    dbgnode("[py_phamt_repr]", self);
    return PyUnicode_FromFormat("<PHAMT:n=%u>", (unsigned)self->numel);
 }
-static PyObject* py_phamt_new(PyTypeObject *subtype, PyObject *args, PyObject *kwds)
-{
-   // #TODO
-   Py_INCREF(PHAMT_EMPTY);
-   return (PyObject*)PHAMT_EMPTY;
-}
 
 //------------------------------------------------------------------------------
 // PHAMT Constructors
 // These are constructors intended for use in the C-API, not thee Python
-// constructors, which are included above (see py_phamt_new).
+// constructors.
 
 // phamt_empty()
 // Returns the empty PHAMT--this is not static because we want it to be
@@ -742,13 +734,44 @@ static PyObject *py_PHAMT_getitem(PyObject *type, PyObject *item)
    Py_INCREF(type);
    return type;
 }
-// PHAMT.from_list(list)
+// PHAMT.from_iter(list)
 // Returns a new PHAMT whose keys are 0, 1, 2... and whose values are the items
 // in the given list in order.
-static PyObject* py_PHAMT_from_list(PyObject* self, PyObject *const *args,
+static PyObject* py_PHAMT_from_iter(PyObject* self, PyObject *const *args,
                                     Py_ssize_t nargs)
 {
-   return NULL; // #TODO
+   PyObject* arg, *it;
+   PHAMT_t thamt;
+   hash_t k = 0;
+   if (nargs > 2 || nargs < 1) {
+      PyErr_SetString(PyExc_ValueError, "PHAMT.from_iter requires 1 or 2 args");
+      return NULL;
+   } else if (nargs == 2) {
+      arg = args[1];
+      if (!PyLong_Check(arg)) {
+         PyErr_SetString(PyExc_ValueError, "k0 must be a long integer");
+         return NULL;
+      }
+      k = (hash_t)PyLong_AsSsize_t(arg);
+   }
+   arg = args[0];
+   // Get the iterator:
+   it = PyObject_GetIter(arg);
+   if (it == NULL)
+      return NULL;
+   // We start with the empty PHAMT and build up the entire THAMT.
+   thamt = PHAMT_EMPTY;
+   while ((arg = PyIter_Next(it))) {
+      thamt = thamt_assoc(thamt, k++, arg);
+      Py_DECREF(arg);
+   }
+   // We're done with the iterator now.
+   Py_DECREF(it);
+   // If there was an error, we just return NULL too propogate it.
+   if (PyErr_Occurred())
+      return NULL;
+   // Otherwise, we juust need to return the persistent PHAMT.
+   return (PyObject*)thamt_persist(thamt);
 }
 
 //------------------------------------------------------------------------------

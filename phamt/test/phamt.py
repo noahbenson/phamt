@@ -282,4 +282,18 @@ class TestPHAMT(TestCase):
         self.pt_test_gc(PHAMT, THAMT)
         from ..py_core import PHAMT, THAMT
         self.pt_test_gc(PHAMT, THAMT)
-
+    def test_from_iter(self):
+        """Tests that PHAMT.from_iter works correctly.
+        """
+        from phamt.py_core import PHAMT as pyPHAMT
+        from phamt.c_core import PHAMT as cPHAMT
+        for PHAMT in [cPHAMT, pyPHAMT]:
+            for (n,k0) in zip([10,50,100,5000],[0,-10,20,0]):
+                u = PHAMT.from_iter(range(n), k0)
+                d = {k0+ii:x for (ii,x) in enumerate(range(n))}
+                self.assertEqual(len(u), len(d))
+                for (k,v) in d.items():
+                    self.assertTrue(k in u)
+                    self.assertTrue(u[k] == v)
+                for (k,v) in u:
+                    self.assertTrue(d[k] == v)
