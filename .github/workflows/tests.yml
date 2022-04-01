@@ -9,8 +9,14 @@ name: CI
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**/README.md'
+      - '**/.gitignore'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**/README.md'
+      - '**/.gitignore'
   # We sometimes want to run this manually.
   workflow_dispatch:
   # We also sometimes want to run this from another workflow.
