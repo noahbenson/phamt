@@ -223,13 +223,16 @@ class PHAMT(Mapping):
     `PHAMT` objects should *not* be made by calling the `PHAMT` constructor.
     """
     empty = None
+    __slots__ = ('_address', '_depth', '_b0sh', '_numel', '_cells')
     # The public interface.
-    def __init__(self, address, depth, numel, cells):
+    def __new__(cls, address, depth, numel, cells):
+        self = super(PHAMT,cls).__new__(cls)
         object.__setattr__(self, '_address', address)
         object.__setattr__(self, '_depth', depth)
         object.__setattr__(self, '_b0sh', _depth_to_bit0shift(depth))
         object.__setattr__(self, '_numel', numel)
         object.__setattr__(self, '_cells', cells)
+        return self
     def __setattr__(self, k, v):
         raise TypeError("type PHAMT is immutable")
     def __setitem__(self, k, v):
@@ -363,6 +366,7 @@ PHAMT.empty = PHAMT(0, PHAMT_ROOT_DEPTH, 0, (None,)*PHAMT_NCELLS)
 
 # The PHAMT Iterator class.
 class PHAMTIter(object):
+    __slots__ = ('_phamt', '_stack')
     def __init__(self, phamt):
         self._phamt = phamt
         cells = phamt._cells
@@ -410,6 +414,7 @@ class THAMT(object):
     a `THAMT` has been edited, it can be efficiently converted back into a
     `PHAMT` object using the `thamt.persistent()` method.
     """
+    __slots__ = ('_phamt', '_version')
     def __init__(self, phamt=PHAMT.empty):
         if not isinstance(phamt, PHAMT):
             raise TypeError("can only make THAMTs from PHAMTs")
@@ -457,6 +462,7 @@ class THAMT(object):
 
 # The THAMT Iterator class.
 class THAMTIter(object):
+    __slots__ = ('_thamt', '_version')
     def __init__(self, thamt):
         self._thamt = thamt
         self._version = thamt._version
