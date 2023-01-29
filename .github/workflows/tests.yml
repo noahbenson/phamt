@@ -8,13 +8,13 @@ name: CI
 # We run on eithe pushes or pulls into main
 on:
   push:
-    branches: [ main dev ]
+    branches: [ main, dev ]
     paths-ignore:
       - '**/README.md'
       - '**/.gitignore'
       - '/.github/workflows/deploy.yml'
   pull_request:
-    branches: [ main dev ]
+    branches: [ main, dev ]
     paths-ignore:
       - '**/README.md'
       - '**/.gitignore'
