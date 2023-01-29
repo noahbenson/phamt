@@ -33,7 +33,7 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - '3.6.15' # if micro-version is not hard-coded, this fails (2023-01-29)
+          - '3.6.12' # if micro-version is not hard-coded, this fails (2023-01-29)
           - '3.7'
           - '3.8'
           - '3.9'
