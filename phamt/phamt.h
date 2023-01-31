@@ -524,14 +524,14 @@ typedef struct THAMT_iter {
 #  define dbgnode(prefix, u) \
      dbgmsg("%s node={addr=(%p, %u, %u, %u),\n"                    \
             "%s       numel=%u, bits=%p,\n"                        \
-            "%s       flags={pyobj=%u, firstn=%u}}\n",             \
+            "%s       flags={pyobj=%u, firstn=%u, full=%u}}\n",    \
             (prefix),                                              \
             (void*)(u)->address, (u)->addr_depth,                  \
             (u)->addr_startbit, (u)->addr_shift,                   \
             (prefix),                                              \
             (unsigned)(u)->numel, (void*)((intptr_t)(u)->bits),    \
             (prefix),                                              \
-            (u)->flag_pyobject, (u)->flag_firstn)
+            (u)->flag_pyobject, (u)->flag_firstn, (u)->flag_full)
 #  define dbgci(prefix, ci)                                       \
      dbgmsg("%s ci={found=%u, beneath=%u, cell=%u, bit=%u}\n",    \
             (prefix), (ci).is_found, (ci).is_beneath,             \
@@ -891,8 +891,9 @@ static inline PHAMT_t _phamt_copy_addcell(PHAMT_t node, PHAMT_index_t ci,
    // If node is a full node, we can't use memcpy.
    if (node->flag_full) {
       bits_t b, bi, ci;
-      for (b = u->bits, ci = 0; b; b &= ~(BITS_ONE << bi), ++ci) {
+      for (b = node->bits, ci = 0; b; b &= ~(BITS_ONE << bi), ++ci) {
          bi = ctz_bits(b);
+         dbgmsg("%u -- %u -- %u\n", b, ci, bi);
          u->cells[ci] = node->cells[bi];
       }
    } else {
@@ -900,8 +901,8 @@ static inline PHAMT_t _phamt_copy_addcell(PHAMT_t node, PHAMT_index_t ci,
       memcpy(u->cells + ci.cellindex + 1,
              node->cells + ci.cellindex,
              sizeof(void*)*(ncells - ci.cellindex));
-      u->cells[ci.cellindex] = val;
    }
+   u->cells[ci.cellindex] = val;
    // Increase the refcount for all these cells!
    ++ncells;
    if (u->addr_depth < PHAMT_TWIG_DEPTH || u->flag_pyobject) {

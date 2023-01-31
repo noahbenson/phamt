@@ -274,6 +274,37 @@ class TestPHAMT(TestCase):
         gc.collect()
         for r in assocs:
             self.assertEqual(r(), None)
+    def test_persist(self):
+        """Tests that the THAMT objects can append to themselves then convert
+        correctly into PHAMTS."""
+        # Test the c_core first.
+        from ..c_core import PHAMT, THAMT
+        t = THAMT(PHAMT.empty)
+        t[0] = 0
+        t[1] = 1
+        t[2] = 2
+        t[3] = 3
+        p = t.persistent()
+        p = p.assoc(4, 4)
+        self.assertEqual(p[0], 0)
+        self.assertEqual(p[1], 1)
+        self.assertEqual(p[2], 2)
+        self.assertEqual(p[3], 3)
+        self.assertEqual(p[4], 4)
+        # Then the py_core.
+        from ..py_core import PHAMT, THAMT
+        t = THAMT(PHAMT.empty)
+        t[0] = 0
+        t[1] = 1
+        t[2] = 2
+        t[3] = 3
+        p = t.persistent()
+        p = p.assoc(4,4)
+        self.assertEqual(p[0], 0)
+        self.assertEqual(p[1], 1)
+        self.assertEqual(p[2], 2)
+        self.assertEqual(p[3], 3)
+        self.assertEqual(p[4], 4)
     def test_gc(self):
         """Tests that PHAMT objects are garbage collectable and allow their
         values to be garbage collected.
