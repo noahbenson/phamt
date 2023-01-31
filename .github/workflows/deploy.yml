@@ -13,13 +13,13 @@ on:
 # (1) deploy-source
 #     Just deploys the source distribution after running tests on ubuntu.
 # (2) deploy-nonlinux
-#     This is a matrix job that deploys for Python 3.6-3.10 on windows and mac
+#     This is a matrix job that deploys for Python 3.7-3.11 on windows and mac
 #     for x64 architecture (and x86 also for Windows).
 # (3) deploy-linux-x86_64
 #     This is a non-matrix job that uses the manylinux docker images to generate
 #     binary distributions for x86_64 Linux distributions. This uses the script
 #     build-wheels.sh, which gets run inside the manylinux docker, to build and
-#     repair the binary wheels for CPython 3.6-3.10 as well as some PyPy builds
+#     repair the binary wheels for CPython 3.7-3.11 as well as some PyPy builds
 #     as well.
 # (4) deploy-linux-i686
 #     Like deploy-linux-x86_64, except for i686 architectures.
@@ -67,22 +67,22 @@ jobs:
       fail-fast: true
       matrix:
         version:
-          - '3.6'
           - '3.7'
           - '3.8'
           - '3.9'
           - '3.10'
+          - '3.11'
         os:
           - windows-latest
           - macos-latest
         arch:
           - 'x64'
         include:
-          - {"os":"windows-latest", "arch":"x86", "version":"3.6"}
           - {"os":"windows-latest", "arch":"x86", "version":"3.7"}
           - {"os":"windows-latest", "arch":"x86", "version":"3.8"}
           - {"os":"windows-latest", "arch":"x86", "version":"3.9"}
           - {"os":"windows-latest", "arch":"x86", "version":"3.10"}
+          - {"os":"windows-latest", "arch":"x86", "version":"3.11"}
     env:
       TWINE_USERNAME: __token__
       TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
