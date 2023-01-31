@@ -33,11 +33,12 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - '3.6'
+          # - '3.6' # apparently no longer supported by the windows and ubuntu gha modules
           - '3.7'
           - '3.8'
           - '3.9'
           - '3.10'
+          - '3.11'
         os:
           - ubuntu-latest
           - windows-latest

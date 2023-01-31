@@ -462,7 +462,7 @@ class THAMT(object):
 
 # The THAMT Iterator class.
 class THAMTIter(object):
-    __slots__ = ('_thamt', '_version')
+    __slots__ = ('_thamt', '_stack', '_version')
     def __init__(self, thamt):
         self._thamt = thamt
         self._version = thamt._version
