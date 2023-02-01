@@ -58,6 +58,7 @@ setup(
                   include_dirs=["phamt"],
                   language="c")],
     package_data={'': ['LICENSE.txt']},
+    zip_safe=False,
     include_package_data=True,
     install_requires=[],
     cmdclass={'build_ext': BuildExt})
