@@ -1155,14 +1155,13 @@ static inline PHAMT_t _thamt_copy_addcell(PHAMT_t node, PHAMT_index_t ci,
       memcpy(u->cells, node->cells, sizeof(void*)*ncells);
    } else {
       bits_t b, bi, ii = 0;
-      for (b = u->bits; b; b &= ~(BITS_ONE << bi)) {
+      for (b = node->bits; b; b &= ~(BITS_ONE << bi)) {
          bi = ctz_bits(b);
          u->cells[bi] = node->cells[ii++];
       }
    }
-   u->cells[ci.bitindex] = val;
    // Increase the refcount for all these cells!
-   ++ncells;
+   u->cells[ci.bitindex] = val;
    if (u->addr_depth < PHAMT_TWIG_DEPTH || u->flag_pyobject)
       _thamt_refcount_cells(u);
    PyObject_GC_Track((PyObject*)u);
