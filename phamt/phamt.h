@@ -5,6 +5,7 @@
 
 #ifndef __phamt_phamt_h_754b8b4b82e87484dd015341f7e9d210
 #define __phamt_phamt_h_754b8b4b82e87484dd015341f7e9d210
+//#define __PHAMT_DEBUG
 
 //==============================================================================
 // Required header files.
@@ -524,14 +525,15 @@ typedef struct THAMT_iter {
 #  define dbgnode(prefix, u) \
      dbgmsg("%s node={addr=(%p, %u, %u, %u),\n"                    \
             "%s       numel=%u, bits=%p,\n"                        \
-            "%s       flags={pyobj=%u, firstn=%u, full=%u}}\n",    \
+            "%s       flags={py=%u, 1stn=%u, full=%u, tr=%u}}\n",  \
             (prefix),                                              \
             (void*)(u)->address, (u)->addr_depth,                  \
             (u)->addr_startbit, (u)->addr_shift,                   \
             (prefix),                                              \
             (unsigned)(u)->numel, (void*)((intptr_t)(u)->bits),    \
             (prefix),                                              \
-            (u)->flag_pyobject, (u)->flag_firstn, (u)->flag_full)
+            (u)->flag_pyobject, (u)->flag_firstn, (u)->flag_full,  \
+            (u)->flag_transient)
 #  define dbgci(prefix, ci)                                       \
      dbgmsg("%s ci={found=%u, beneath=%u, cell=%u, bit=%u}\n",    \
             (prefix), (ci).is_found, (ci).is_beneath,             \
@@ -1040,6 +1042,25 @@ static inline PHAMT_t _thamt_empty(uint8_t pyobject)
    // That's it--node is ready!
    return node;
 }
+static inline PHAMT_t _thamt_set_kv(PHAMT_t node, hash_t k, void* v)
+{
+   uint8_t bi = (k & PHAMT_TWIG_MASK);
+   // This function requires that node already be a transient node, so many of
+   // the flags/etc. below are not updated.
+   dbgnode("[_thamt_set_kv]", node);
+   node->address = k & ~PHAMT_TWIG_MASK;
+   node->bits = (BITS_ONE << bi);
+   node->numel = 1;
+   node->flag_firstn = node->bits == 1;
+   node->addr_depth = PHAMT_TWIG_DEPTH;
+   node->addr_shift = PHAMT_TWIG_SHIFT;
+   node->addr_startbit = 0;
+   node->cells[bi] = (void*)v;
+   // Update that refcount.
+   if (node->flag_pyobject) Py_INCREF(v);
+   // Otherwise, that's all!
+   return node;
+}
 static inline PHAMT_t _thamt_from_kv(hash_t k, void* v, uint8_t flag_pyobject)
 {
    PHAMT_t node = _phamt_new(PHAMT_ANY_MAXCELLS);
@@ -1090,7 +1111,6 @@ static inline PHAMT_t _thamt_copy_chgcell(PHAMT_t node, PHAMT_index_t ci,
       return node;
    }
    // Otherwise, we need to do an allocation, much like with phamts.
-   ncells = phamt_maxcells(node->addr_depth);
    u = _phamt_new(PHAMT_ANY_MAXCELLS);
    u->address = node->address;
    u->bits = node->bits;
@@ -1104,14 +1124,16 @@ static inline PHAMT_t _thamt_copy_chgcell(PHAMT_t node, PHAMT_index_t ci,
    u->addr_startbit = node->addr_startbit;
    // Copy over the cells. This depends on node's format.
    if (node->flag_full) {
+      ncells = phamt_maxcells(node->addr_depth);
       memcpy(u->cells, node->cells, sizeof(void*)*ncells);
    } else if (node->flag_firstn) {
-      memcpy(u->cells, node->cells, sizeof(void*)*phamt_cellcount(node));
+      ncells = phamt_cellcount(node);
+      memcpy(u->cells, node->cells, sizeof(void*)*ncells);
    } else {
-      bits_t b, bi, ii = 0;
-      for (b = u->bits; b; b &= ~(BITS_ONE << bi)) {
+      bits_t b, bi, ii;
+      for (b = u->bits, ii = 0; b; b &= ~(BITS_ONE << bi), ++ii) {
          bi = ctz_bits(b);
-         u->cells[bi] = node->cells[ii++];
+         u->cells[bi] = node->cells[ii];
       }
    }
    u->cells[ci.bitindex] = val;
@@ -1156,10 +1178,10 @@ static inline PHAMT_t _thamt_copy_addcell(PHAMT_t node, PHAMT_index_t ci,
    } else if (node->flag_firstn) {
       memcpy(u->cells, node->cells, sizeof(void*)*ncells);
    } else {
-      bits_t b, bi, ii = 0;
-      for (b = node->bits; b; b &= ~(BITS_ONE << bi)) {
+      bits_t b, bi, ii;
+      for (b = node->bits, ii = 0; b; b &= ~(BITS_ONE << bi), ++ii) {
          bi = ctz_bits(b);
-         u->cells[bi] = node->cells[ii++];
+         u->cells[bi] = node->cells[ii];
       }
    }
    // Increase the refcount for all these cells!
@@ -1182,8 +1204,6 @@ static inline PHAMT_t _thamt_copy_delcell(PHAMT_t node, PHAMT_index_t ci)
       Py_INCREF(node);
       return node;
    }
-   ncells = phamt_cellcount(node);
-   maxcells = phamt_maxcells(node->addr_depth);
    // Otherwise, we need to do an allocation, much like with phamts.
    // We don't check for ncells == 0 because we're actually fine making a new
    // empty transient node.
@@ -1202,16 +1222,18 @@ static inline PHAMT_t _thamt_copy_delcell(PHAMT_t node, PHAMT_index_t ci)
    // bit (plus unref the object if necessary). It doesn't hurt us to have the
    // old value sitting there.
    if (node->flag_full) {
+      maxcells = phamt_maxcells(node->addr_depth);
       memcpy(u->cells, node->cells, sizeof(void*)*maxcells);
    } else if (node->flag_firstn) {
+      ncells = phamt_cellcount(node);
       memcpy(u->cells, node->cells, sizeof(void*)*ncells);
    } else {
-      bits_t b, bi, ii = 0;
-      for (b = node->bits; b; b &= ~(BITS_ONE << bi)) {
+      bits_t b, bi, ii;
+      for (b = node->bits, ii = 0; b; b &= ~(BITS_ONE << bi), ++ii) {
          bi = ctz_bits(b);
-         if (bi != ci.bitindex)
-            u->cells[bi] = node->cells[ii];
-         ++ii;
+         // It's okay to copy over the deleted node because we won't ref it,
+         // and the cell isn't marked in the bits as occupied.
+         u->cells[bi] = node->cells[ii];
       }
    }
    // Increase the refcount for all these cells!
@@ -1641,8 +1663,16 @@ static inline PHAMT_t _thamt_assoc_path(PHAMT_path_t* path, hash_t k,
       u = _thamt_copy_addcell(loc->node, loc->index, newval);
       ++(u->numel);
    } else if (node->numel == 0) {
-      // We are assoc'ing to the empty node, so just return a new key-val twig.
-      return _thamt_from_kv(k, newval, node->flag_pyobject);
+      if (node->flag_transient) {
+         // We are editing an empty node
+         _thamt_set_kv(node, k, newval);
+         Py_INCREF(node);
+         return node;
+      } else {
+         // We are assoc'ing to the empty PHAMT node, so just return a new
+         // key-val twig.
+         return _thamt_from_kv(k, newval, node->flag_pyobject);
+      }
    } else {
       // We are adding a new twig to an internal node.
       node = _thamt_from_kv(k, newval, node->flag_pyobject);
