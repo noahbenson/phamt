@@ -943,7 +943,7 @@ static inline PHAMT_t _phamt_copy_delcell(PHAMT_t node, PHAMT_index_t ci)
       memcpy(u->cells, node->cells, sizeof(void*)*ci.cellindex);
       memcpy(u->cells + ci.cellindex,
              node->cells + ci.cellindex + 1,
-             sizeof(void*)*(ncells + 1 - ci.cellindex));
+             sizeof(void*)*(ncells - ci.cellindex));
    }
    // Increase the refcount for all these cells!
    if (u->addr_depth < PHAMT_TWIG_DEPTH || u->flag_pyobject) {
