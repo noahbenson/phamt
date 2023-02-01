@@ -893,7 +893,6 @@ static inline PHAMT_t _phamt_copy_addcell(PHAMT_t node, PHAMT_index_t ci,
       bits_t b, bi, ci;
       for (b = node->bits, ci = 0; b; b &= ~(BITS_ONE << bi), ++ci) {
          bi = ctz_bits(b);
-         dbgmsg("%u -- %u -- %u\n", b, ci, bi);
          u->cells[ci] = node->cells[bi];
       }
    } else {
@@ -944,7 +943,7 @@ static inline PHAMT_t _phamt_copy_delcell(PHAMT_t node, PHAMT_index_t ci)
       memcpy(u->cells, node->cells, sizeof(void*)*ci.cellindex);
       memcpy(u->cells + ci.cellindex,
              node->cells + ci.cellindex + 1,
-             sizeof(void*)*(ncells - ci.cellindex));
+             sizeof(void*)*(ncells + 1 - ci.cellindex));
    }
    // Increase the refcount for all these cells!
    if (u->addr_depth < PHAMT_TWIG_DEPTH || u->flag_pyobject) {
@@ -1179,11 +1178,10 @@ static inline PHAMT_t _thamt_copy_delcell(PHAMT_t node, PHAMT_index_t ci)
          Py_DECREF(node->cells[ci.bitindex]);
       node->bits &= ~(BITS_ONE << ci.bitindex);
       node->flag_firstn = firstn_bits(node->bits);
-
       Py_INCREF(node);
       return node;
    }
-   ncells = phamt_cellcount(node) - 1;
+   ncells = phamt_cellcount(node);
    maxcells = phamt_maxcells(node->addr_depth);
    // Otherwise, we need to do an allocation, much like with phamts.
    // We don't check for ncells == 0 because we're actually fine making a new
@@ -1707,7 +1705,7 @@ static inline PHAMT_t _thamt_dissoc_path(PHAMT_path_t* path)
    PHAMT_loc_t* loc;
    PHAMT_t u, node = path->steps[path->min_depth].node;
    uint8_t ii, depth = path->max_depth;
-   dbgpath("[_phamt_dissoc]", path);
+   dbgpath("[_thamt_dissoc]", path);
    if (!path->value_found) {
       // The item isn't there; just return the node unaltered.
       Py_INCREF(node);
