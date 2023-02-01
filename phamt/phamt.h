@@ -890,11 +890,13 @@ static inline PHAMT_t _phamt_copy_addcell(PHAMT_t node, PHAMT_index_t ci,
       ci = phamt_cellindex(u, ((hash_t)ci.bitindex) << node->addr_startbit);
    // If node is a full node, we can't use memcpy.
    if (node->flag_full) {
-      bits_t b, bi, ci;
-      for (b = node->bits, ci = 0; b; b &= ~(BITS_ONE << bi), ++ci) {
+      bits_t b, bi, ii;
+      for (b = u->bits, ii = 0; b; b &= ~(BITS_ONE << bi), ++ii) {
          bi = ctz_bits(b);
-         u->cells[ci] = node->cells[bi];
+         u->cells[ii] = node->cells[bi];
       }
+      // We have a new cellindex now.
+      ci.cellindex = popcount_bits(u->bits & lowmask_bits(ci.bitindex));
    } else {
       memcpy(u->cells, node->cells, sizeof(void*)*ci.cellindex);
       memcpy(u->cells + ci.cellindex + 1,
@@ -1205,9 +1207,11 @@ static inline PHAMT_t _thamt_copy_delcell(PHAMT_t node, PHAMT_index_t ci)
       memcpy(u->cells, node->cells, sizeof(void*)*ncells);
    } else {
       bits_t b, bi, ii = 0;
-      for (b = u->bits; b; b &= ~(BITS_ONE << bi)) {
+      for (b = node->bits; b; b &= ~(BITS_ONE << bi)) {
          bi = ctz_bits(b);
-         u->cells[bi] = node->cells[ii++];
+         if (bi != ci.bitindex)
+            u->cells[bi] = node->cells[ii];
+         ++ii;
       }
    }
    // Increase the refcount for all these cells!
