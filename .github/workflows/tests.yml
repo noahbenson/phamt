@@ -75,8 +75,9 @@ jobs:
       # Run the actual tests.
       - name: Run Tests
         run: |
-          python setup.py build
-          python setup.py install
+          #python setup.py build
+          #python setup.py install
+          pip install -e .
           #pip install coverage
           cd ~
           #coverage run -m unittest phamt.test

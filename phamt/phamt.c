@@ -721,7 +721,6 @@ static PyObject* py_thamtiter_next(THAMT_iter_t self)
    // path.
    loc = self->path.steps + self->path.max_depth;
    key = loc->node->address | (hash_t)loc->index.bitindex;
-   dbgmsg(" -- %u %u\n", (unsigned)key, (unsigned)self->path.max_depth);
    dbgpath("[thamtiter_next]", &self->path);
    return Py_BuildValue("(nO)", (Py_ssize_t)key, val);
 }
