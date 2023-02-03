@@ -732,7 +732,7 @@ static inline PHAMT_index_t phamt_firstcell(PHAMT_t node)
 // cell whose index is given.
 static inline PHAMT_index_t phamt_nextcell(PHAMT_t node, PHAMT_index_t ii)
 {
-   bits_t b = node->bits & highmask_bits(ii.bitindex);
+   bits_t b = node->bits & highmask_bits(ii.bitindex + 1);
    ii.bitindex = ctz_bits(b);
    //if (node->flag_full)
    //   ii.cellindex = ii.bitindex;
@@ -1111,6 +1111,8 @@ static inline PHAMT_t _thamt_copy_chgcell(PHAMT_t node, PHAMT_index_t ci,
       return node;
    }
    // Otherwise, we need to do an allocation, much like with phamts.
+   dbgnode("[_thamt_copy_addcell]", node);
+   dbgci("[_thamt_copy_addcell]", ci);
    u = _phamt_new(PHAMT_ANY_MAXCELLS);
    u->address = node->address;
    u->bits = node->bits;
@@ -1854,6 +1856,8 @@ static inline PHAMT_t thamt_persist(PHAMT_t node)
    loc->node = node;
    // Now, iterate, starting here.
    while (1) {
+      dbgmsg("[thamt_persist]: depth=%u\n", d);
+      dbgnode("   ", loc->node);
       // Upon starting this loop, we are encountering the node at the given
       // depth for the first time.
       if (loc->node->flag_transient) {
@@ -1865,7 +1869,8 @@ static inline PHAMT_t thamt_persist(PHAMT_t node)
             // stack (path).
             d = loc->index.is_beneath;
             loc->index = phamt_firstcell(loc->node);
-            loc->index.is_beneath = d; // Preserve the pevious depth!
+            loc->index.is_beneath = d; // Preserve the previous depth!
+            d = loc->node->addr_depth;
             u = loc->node->cells[loc->index.cellindex];
             loc = path.steps + u->addr_depth;
             loc->index.is_beneath = d;
@@ -1886,7 +1891,7 @@ static inline PHAMT_t thamt_persist(PHAMT_t node)
          loc = path.steps + d;
          d = loc->index.is_beneath;
          loc->index = phamt_nextcell(loc->node, loc->index);
-         loc->index.is_beneath = d; // Preserve the pevious depth!
+         loc->index.is_beneath = d; // Preserve the previous depth!
       } while (!loc->index.is_found);
       u = loc->node->cells[loc->index.cellindex];
       loc = path.steps + u->addr_depth;
