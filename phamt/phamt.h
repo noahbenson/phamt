@@ -1893,6 +1893,7 @@ static inline PHAMT_t thamt_persist(PHAMT_t node)
          loc->index = phamt_nextcell(loc->node, loc->index);
          loc->index.is_beneath = d; // Preserve the previous depth!
       } while (!loc->index.is_found);
+      d = loc->node->addr_depth;
       u = loc->node->cells[loc->index.cellindex];
       loc = path.steps + u->addr_depth;
       loc->node = u;
