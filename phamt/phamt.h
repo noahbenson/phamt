@@ -470,6 +470,9 @@ typedef struct PHAMT_iter {
    PyObject_HEAD
    // All the iterator needs is to know is the path of iteration so far.
    PHAMT_path_t path;
+   // The root node we hold a reference to (path.min_depth is reset to 0 at
+   // the end of iteration, so we can't rely on path.steps[min_depth].node).
+   PHAMT_t root;
 }* PHAMT_iter_t;
 
 // The THAMT type for Python.
