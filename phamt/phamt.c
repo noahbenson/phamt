@@ -383,6 +383,7 @@ static PyObject *py_phamt_iter(PHAMT_t self)
                                                       &PHAMT_iter_type, 0);
    uint8_t d = self->addr_depth;
    Py_INCREF(self);
+   it->root = self;
    it->path.steps[d].node = self;
    it->path.min_depth = d;
    it->path.value_found = 0xff; // indicates we haven't started.
@@ -491,12 +492,12 @@ static void py_phamtiter_dealloc(PHAMT_iter_t self)
 static int py_phamtiter_traverse(PHAMT_iter_t self, visitproc visit, void *arg)
 {
    Py_VISIT(Py_TYPE(self));
-   Py_VISIT(self->path.steps[self->path.min_depth].node);
+   Py_VISIT(self->root);
    return 0;
 }
 static int py_phamtiter_clear(PHAMT_iter_t self)
 {
-   Py_CLEAR(self->path.steps[self->path.min_depth].node);   
+   Py_CLEAR(self->root);
    return 0;
 }
 static PyObject* py_phamtiter_repr(PHAMT_iter_t self)
