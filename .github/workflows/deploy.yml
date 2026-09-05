@@ -49,8 +49,7 @@ jobs:
       # Make sure the tests pass before we upload anything.
       - name: Run Tests
         run: |
-          python setup.py build
-          python setup.py install
+          pip install -e .
           cd ~
           python -m unittest phamt.test
       # Go ahead and build and deploy.
