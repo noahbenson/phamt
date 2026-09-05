@@ -1616,7 +1616,6 @@ static inline void* phamt_next(PHAMT_t node0, PHAMT_path_t* path)
    path->value_found = 0;
    path->max_depth = 0xff;
    path->edit_depth = 0;
-   path->min_depth = 0;
    return NULL;
 }
 

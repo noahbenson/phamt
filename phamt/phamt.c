@@ -381,6 +381,8 @@ static PyObject *py_phamt_iter(PHAMT_t self)
 {
    PHAMT_iter_t it = (PHAMT_iter_t)PyObject_GC_NewVar(struct PHAMT_iter,
                                                       &PHAMT_iter_type, 0);
+   if (!it)
+      return NULL;
    uint8_t d = self->addr_depth;
    Py_INCREF(self);
    it->path.steps[d].node = self;
@@ -490,13 +492,15 @@ static void py_phamtiter_dealloc(PHAMT_iter_t self)
 }
 static int py_phamtiter_traverse(PHAMT_iter_t self, visitproc visit, void *arg)
 {
+   PHAMT_t** ptr = &(self->path.steps[self->path.min_depth].node);
    Py_VISIT(Py_TYPE(self));
-   Py_VISIT(self->path.steps[self->path.min_depth].node);
+   Py_VISIT(*ptr);
    return 0;
 }
 static int py_phamtiter_clear(PHAMT_iter_t self)
 {
-   Py_CLEAR(self->path.steps[self->path.min_depth].node);   
+   PHAMT_t** ptr = &(self->path.steps[self->path.min_depth].node);
+   Py_CLEAR(*ptr);
    return 0;
 }
 static PyObject* py_phamtiter_repr(PHAMT_iter_t self)
