@@ -112,8 +112,7 @@ jobs:
           pip install delocate
       - name: Run Tests
         run: |
-          python setup.py build
-          python setup.py install
+          python -m pip install -e .
           cd ~
           python -m unittest phamt.test
       - name: Build Binary Distribution
