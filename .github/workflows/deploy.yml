@@ -55,7 +55,7 @@ jobs:
       # Go ahead and build and deploy.
       - name: Build and Upload Source Distribution
         run: |
-          rm dist/*
+          rm -rf dist
           python setup.py sdist
           twine upload -r $TWINE_DEST dist/phamt-*.tar.gz
   #-----------------------------------------------------------------------------
@@ -116,7 +116,7 @@ jobs:
           python -m unittest phamt.test
       - name: Build Binary Distribution
         run: |
-          rm dist/*
+          rm -rf dist
           python setup.py bdist_wheel
       - name: Delocate Wheels
         if: startsWith(matrix.os, 'macos')
