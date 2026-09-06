@@ -492,14 +492,14 @@ static void py_phamtiter_dealloc(PHAMT_iter_t self)
 }
 static int py_phamtiter_traverse(PHAMT_iter_t self, visitproc visit, void *arg)
 {
-   PHAMT_t** ptr = &(self->path.steps[self->path.min_depth].node);
+   PHAMT_t* ptr = &(self->path.steps[self->path.min_depth].node);
    Py_VISIT(Py_TYPE(self));
    Py_VISIT(*ptr);
    return 0;
 }
 static int py_phamtiter_clear(PHAMT_iter_t self)
 {
-   PHAMT_t** ptr = &(self->path.steps[self->path.min_depth].node);
+   PHAMT_t* ptr = &(self->path.steps[self->path.min_depth].node);
    Py_CLEAR(*ptr);
    return 0;
 }
