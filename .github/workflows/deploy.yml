@@ -123,7 +123,7 @@ jobs:
       - name: Build Binary Distribution
         run: |
           rm -rf dist
-          python setup.py bdist_wheel
+          python -m build --wheel
       - name: Delocate Wheels
         if: startsWith(matrix.os, 'macos')
         run: |

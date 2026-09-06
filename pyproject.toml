@@ -1,7 +1,7 @@
 [project]
 name = "phamt"
 description = "A library implementing Persistent Hashed Array Mapped Tries in CPython"
-version = "0.1.7"
+version = "0.1.8"
 authors = [
   { name = "Noah C. Benson", email = "nben@uw.edu" }
 ]
@@ -10,5 +10,5 @@ license = {text="MIT"}
 dynamic = ["classifiers", "keywords"]
 
 [build-system]
-requires = ["setuptools>=42", "wheel", "setuptools_scm[toml]>=3.4"]
+requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
