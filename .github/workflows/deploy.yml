@@ -1,7 +1,23 @@
 ################################################################################
 # deploy.yml
-# GitHub Actions Workflow for deploying phamt to PyPI.
+# GitHub Actions Workflow for deploying pcollections to PyPI.
 # by Noah C. Benson
+#
+# Wheel builds are handled by cibuildwheel; Python 3.7--3.12.
+#
+# Wheel targets:
+#  - Linux:
+#     - x86_64  - CPython 3.7-3.12
+#     - i686    - CPython 3.7-3.12
+#     - aarch64 - CPython 3.7-3.12
+#  - Windows:
+#     - AMD64 - CPython 3.7-3.12
+#     - x86   - CPython 3.7-3.12
+#     - ARM64 - CPython 3.9-3.12
+#  - macOS:
+#     - x86_64 - CPython 3.7-3.12
+#     - arm64  - CPython 3.8-3.12
+
 
 name: Deploy to PyPI
 
@@ -9,183 +25,106 @@ name: Deploy to PyPI
 on:
   workflow_dispatch:
 
-# Four job categores:
-# (1) deploy-source
-#     Just deploys the source distribution after running tests on ubuntu.
-# (2) deploy-nonlinux
-#     This is a matrix job that deploys for Python 3.7-3.12 on windows and mac
-#     for x64 architecture (and x86 also for Windows).
-# (3) deploy-linux-x86_64
-#     This is a non-matrix job that uses the manylinux docker images to generate
-#     binary distributions for x86_64 Linux distributions. This uses the script
-#     build-wheels.sh, which gets run inside the manylinux docker, to build and
-#     repair the binary wheels for CPython 3.7-3.12 as well as some PyPy builds
-#     as well.
-# (4) deploy-linux-i686
-#     Like deploy-linux-x86_64, except for i686 architectures.
 jobs:
-  #-----------------------------------------------------------------------------
   deploy-source:
-    name: Source
+    name: Build source distribution
     runs-on: ubuntu-latest
-    env:
-      TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      TWINE_DEST: pypi
     steps:
-      # Check out the repository (goes to $GITHUB_WORKSPACE)
       - name: Checkout
-        uses: actions/checkout@v7
-      # Setup the Python Environment.
-      - name: Setup Python Environment
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: 3
-          architecture: x64
-      # We need to install twine also for uploading to PyPI.
-      - name: Install Twine
+          python-version: "3.x"
+      - name: Install build tools
         run: |
-          python -m pip install twine
-      - name: Install Build
-        run: |
-          python -m pip install build
-      # Make sure the tests pass before we upload anything.
-      - name: Run Tests
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+      - name: Run tests
         run: |
           python -m pip install .
           cd ~
           python -m unittest phamt.test
-      # Go ahead and build and deploy.
-      - name: Build and Upload Source Distribution
+      - name: Build source distribution
         run: |
           python -m build --sdist
-          twine upload --skip-existing -r $TWINE_DEST dist/phamt-*.tar.gz
-  #-----------------------------------------------------------------------------
-  deploy-nonlinux:
-    name: ${{matrix.os}} [${{matrix.arch}}] - py${{matrix.version}}
+      - name: Upload source distribution
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          twine upload --skip-existing dist/phamt-*.tar.gz
+
+  deploy-wheels:
+    name: Wheel - ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
       matrix:
-        version:
-          - '3.7'
-          - '3.8'
-          - '3.9'
-          - '3.10'
-          - '3.11'
-          - '3.12'
-        os:
-          - windows-latest
-          - macos-26-intel
-        exclude:
-          - os: macos-26-intel
-            version: '3.7'
-        arch:
-          - 'x64'
         include:
-          - {"os":"windows-latest", "arch":"x86", "version":"3.7"}
-          - {"os":"windows-latest", "arch":"x86", "version":"3.8"}
-          - {"os":"windows-latest", "arch":"x86", "version":"3.9"}
-          - {"os":"windows-latest", "arch":"x86", "version":"3.10"}
-          - {"os":"windows-latest", "arch":"x86", "version":"3.11"}
-          - {"os":"windows-latest", "arch":"x86", "version":"3.12"}
-          - {"os":"macos-15-intel", "arch":"x64", "version":"3.7"}
-          - {"os":"macos-latest", "arch":"arm64", "version":"3.10"}
-          - {"os":"macos-latest", "arch":"arm64", "version":"3.11"}
-          - {"os":"macos-latest", "arch":"arm64", "version":"3.12"}
+          - name: Linux x86_64 / i686
+            os: ubuntu-latest
+            archs: x86_64 i686
+            build: >-
+              cp37-* cp38-* cp39-* cp310-* cp311-* cp312-*
+          - name: Linux ARM64
+            os: ubuntu-24.04-arm
+            archs: aarch64
+            build: >-
+              cp37-* cp38-* cp39-* cp310-* cp311-* cp312-*
+          - name: Windows AMD64 / x86
+            os: windows-latest
+            archs: AMD64 x86
+            build: >-
+              cp37-* cp38-* cp39-* cp310-* cp311-* cp312-*
+          - name: Windows ARM64
+            os: windows-11-arm
+            archs: ARM64
+            build: >-
+              cp39-* cp310-* cp311-* cp312-*
+          - name: macOS Intel
+            os: macos-15-intel
+            archs: x86_64
+            build: >-
+              cp37-* cp38-* cp39-* cp310-* cp311-* cp312-*
+          - name: macOS ARM64
+            os: macos-14
+            archs: arm64
+            build: >-
+              cp38-* cp39-* cp310-* cp311-* cp312-*
     env:
-      TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      TWINE_DEST: pypi
+      CIBW_BUILD: ${{ matrix.build }}
+      CIBW_ARCHS: ${{ matrix.archs }}
+      CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+      CIBW_MANYLINUX_I686_IMAGE: manylinux2014
+      CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
+      MACOSX_DEPLOYMENT_TARGET: "10.15"
+      CIBW_TEST_COMMAND: >-
+        python -m unittest phamt.test
+      CIBW_BUILD_VERBOSITY: "1"
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
-      - name: Setup Python Environment
-        uses: actions/setup-python@v6
+        uses: actions/checkout@v6
         with:
-          python-version: ${{ matrix.version }}
-          architecture: ${{ matrix.arch }}
+          persist-credentials: false
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v4.2.1
+        with:
+          output-dir: wheelhouse
+      - name: List generated wheels
+        shell: bash
+        run: |
+          echo "Generated wheels:"
+          ls -lh wheelhouse/
       - name: Install Twine
         run: |
+          python -m pip install --upgrade pip
           python -m pip install twine
-      - name: Install Build
+      - name: Upload wheels to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          python -m pip install build
-      - name: Install Wheel
-        run: |
-          python -m pip install wheel
-      - name: Install delocate
-        if: startsWith(matrix.os, 'macos')
-        run: |
-          python -m pip install delocate
-      - name: Run Tests
-        run: |
-          python -m pip install .
-          cd ~
-          python -m unittest phamt.test
-      - name: Build Binary Distribution
-        run: |
-          python -m build --wheel
-      - name: Delocate Wheels
-        if: startsWith(matrix.os, 'macos')
-        run: |
-          delocate-wheel -v dist/*.whl
-      - name: Upload Binary Distribution
-        # It would be nice to use $TWINE_DEST here, but this fails in windows.
-        # Also, FWIW, this code is fine, but `twine upload -r pypi dist/*.whl`
-        # fails on Windows.
-        run: |
-          cd dist
-          twine upload --skip-existing -r pypi *.whl
-  #-----------------------------------------------------------------------------
-  deploy-linux-x86_64:
-    name: ubuntu-latest [x86_64] - all
-    runs-on: ubuntu-latest
-    env:
-      TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      TWINE_DEST: pypi
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Setup Python Environment
-        uses: actions/setup-python@v6
-        with:
-          python-version: 3
-          architecture: x64
-      - name: Install Twine
-        run: |
-          pip install twine
-      - name: Build Wheels
-        uses: docker://quay.io/pypa/manylinux_2_24_x86_64
-        with:
-          args: bash /github/workspace/build-wheels.sh manylinux_2_24_x86_64
-      - name: Upload Binary Distribution
-        run: |
-          twine upload --skip-existing -r $TWINE_DEST wheels/*.whl
-  #-----------------------------------------------------------------------------
-  deploy-linux-i686:
-    name: ubuntu-latest [i686] - all
-    runs-on: ubuntu-latest
-    env:
-      TWINE_USERNAME: __token__
-      TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      TWINE_DEST: pypi
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Setup Python Environment
-        uses: actions/setup-python@v6
-        with:
-          python-version: 3
-          architecture: x64
-      - name: Install Twine
-        run: |
-          pip install twine
-      - name: Build Wheels
-        uses: docker://quay.io/pypa/manylinux_2_24_i686
-        with:
-          args: bash /github/workspace/build-wheels.sh manylinux_2_24_i686
-      - name: Upload Binary Distribution
-        run: |
-          twine upload --skip-existing -r $TWINE_DEST wheels/*.whl
+          twine upload --skip-existing wheelhouse/*.whl
