@@ -116,8 +116,12 @@ jobs:
       - name: List generated wheels
         shell: bash
         run: |
-          echo "Generated wheels:"
+          echo 'Generated wheels:'
           ls -lh wheelhouse/
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
       - name: Install Twine
         run: |
           python -m pip install --upgrade pip
