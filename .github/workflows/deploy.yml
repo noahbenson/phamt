@@ -59,7 +59,7 @@ jobs:
       - name: Build and Upload Source Distribution
         run: |
           python -m build --sdist
-          twine upload -r $TWINE_DEST dist/phamt-*.tar.gz
+          twine upload --skip-existing -r $TWINE_DEST dist/phamt-*.tar.gz
   #-----------------------------------------------------------------------------
   deploy-nonlinux:
     name: ${{matrix.os}} [${{matrix.arch}}] - py${{matrix.version}}
@@ -132,7 +132,7 @@ jobs:
         # fails on Windows.
         run: |
           cd dist
-          twine upload -r pypi *.whl
+          twine upload --skip-existing -r pypi *.whl
   #-----------------------------------------------------------------------------
   deploy-linux-x86_64:
     name: ubuntu-latest [x86_64] - all
@@ -158,7 +158,7 @@ jobs:
           args: bash /github/workspace/build-wheels.sh manylinux_2_24_x86_64
       - name: Upload Binary Distribution
         run: |
-          twine upload -r $TWINE_DEST wheels/*.whl
+          twine upload --skip-existing -r $TWINE_DEST wheels/*.whl
   #-----------------------------------------------------------------------------
   deploy-linux-i686:
     name: ubuntu-latest [i686] - all
@@ -184,4 +184,4 @@ jobs:
           args: bash /github/workspace/build-wheels.sh manylinux_2_24_i686
       - name: Upload Binary Distribution
         run: |
-          twine upload -r $TWINE_DEST wheels/*.whl
+          twine upload --skip-existing -r $TWINE_DEST wheels/*.whl
