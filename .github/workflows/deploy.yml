@@ -68,7 +68,12 @@ jobs:
             os: ubuntu-latest
             archs: x86_64 i686
             build: >-
-              cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
+              cp310-* cp311-* cp312-* cp313-* cp314-*
+          - name: Ubuntu 22 x86_64 / i686
+            os: ubuntu-22.04
+            archs: x86_64 i686
+            build: >-
+              cp38-* cp39-*
           - name: Linux ARM64
             os: ubuntu-24.04-arm
             archs: aarch64
