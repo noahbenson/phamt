@@ -90,7 +90,7 @@ jobs:
             build: >-
               cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
           - name: macOS ARM64
-            os: macos-14
+            os: macos-15-latest
             archs: arm64
             build: >-
               cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
