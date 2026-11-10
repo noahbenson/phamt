@@ -7,16 +7,16 @@
 #
 # Wheel targets:
 #  - Linux:
-#     - x86_64  - CPython 3.7-3.12
-#     - i686    - CPython 3.7-3.12
-#     - aarch64 - CPython 3.7-3.12
+#     - x86_64  - CPython 3.9-3.14
+#     - i686    - CPython 3.9-3.14
+#     - aarch64 - CPython 3.9-3.14
 #  - Windows:
-#     - AMD64 - CPython 3.7-3.12
-#     - x86   - CPython 3.7-3.12
-#     - ARM64 - CPython 3.9-3.12
+#     - AMD64 - CPython 3.9-3.14
+#     - x86   - CPython 3.9-3.14
+#     - ARM64 - CPython 3.9-3.14
 #  - macOS:
-#     - x86_64 - CPython 3.7-3.12
-#     - arm64  - CPython 3.8-3.12
+#     - x86_64 - CPython 3.9-3.14
+#     - arm64  - CPython 3.9-3.14
 
 
 name: Deploy to PyPI
@@ -68,32 +68,32 @@ jobs:
             os: ubuntu-latest
             archs: x86_64 i686
             build: >-
-              cp37-* cp38-* cp39-* cp310-* cp311-* cp312-*
+              cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
           - name: Linux ARM64
             os: ubuntu-24.04-arm
             archs: aarch64
             build: >-
-              cp38-* cp39-* cp310-* cp311-* cp312-*
+              cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
           - name: Windows AMD64 / x86
             os: windows-latest
             archs: AMD64 x86
             build: >-
-              cp37-* cp38-* cp39-* cp310-* cp311-* cp312-*
+              cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
           - name: Windows ARM64
             os: windows-11-arm
             archs: ARM64
             build: >-
-              cp39-* cp310-* cp311-* cp312-*
+              cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
           - name: macOS Intel
             os: macos-15-intel
             archs: x86_64
             build: >-
-              cp37-* cp38-* cp39-* cp310-* cp311-* cp312-*
+              cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
           - name: macOS ARM64
             os: macos-14
             archs: arm64
             build: >-
-              cp38-* cp39-* cp310-* cp311-* cp312-*
+              cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*
     env:
       CIBW_BUILD: ${{ matrix.build }}
       CIBW_ARCHS: ${{ matrix.archs }}

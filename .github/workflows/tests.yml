@@ -38,6 +38,8 @@ jobs:
           - '3.10'
           - '3.11'
           - '3.12'
+          - '3.13'
+          - '3.14'
         os:
           - ubuntu-latest
           - windows-latest
@@ -50,9 +52,13 @@ jobs:
           - {"os": "windows-latest", "arch": "x86", "version": "3.10"}
           - {"os": "windows-latest", "arch": "x86", "version": "3.11"}
           - {"os": "windows-latest", "arch": "x86", "version": "3.12"}
+          - {"os": "windows-latest", "arch": "x86", "version": "3.13"}
+          - {"os": "windows-latest", "arch": "x86", "version": "3.14"}
           - {"os": "macos-latest", "arch": "arm64", "version": "3.10"}
           - {"os": "macos-latest", "arch": "arm64", "version": "3.11"}
           - {"os": "macos-latest", "arch": "arm64", "version": "3.12"}
+          - {"os": "macos-latest", "arch": "arm64", "version": "3.13"}
+          - {"os": "macos-latest", "arch": "arm64", "version": "3.14"}
     # The job environment.
     env:
       OS: ${{ matrix.os }}
