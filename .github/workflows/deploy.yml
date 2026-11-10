@@ -116,6 +116,7 @@ jobs:
           persist-credentials: false
       - name: Set up QEMU for i686
         uses: docker/setup-qemu-action@v3
+        runs-on: [i686, ubuntu-22.04]
         with:
           platforms: i686
       - name: Build wheels
