@@ -57,9 +57,9 @@ jobs:
           - {"os": "macos-latest", "arch": "arm64", "version": "3.12"}
           - {"os": "macos-latest", "arch": "arm64", "version": "3.13"}
           - {"os": "macos-latest", "arch": "arm64", "version": "3.14"}
-          - {"os": "ubuntu-24.04", "arch": "x86", "version": "3.9"}
+          - {"os": "ubuntu-24.04", "arch": "x64", "version": "3.9"}
         exclude:
-          - {"os": "ubuntu-latest", "arch": "x86", "version": "3.9"}
+          - {"os": "ubuntu-latest", "arch": "x64", "version": "3.9"}
     # The job environment.
     env:
       OS: ${{ matrix.os }}
